@@ -232,9 +232,29 @@ export function installTvMode() {
 
   watchDialogs();
 
-  const focusFirst = () => {
+  // The first page renders after its data arrives, so keeping only one attempt can leave the focus on <body>.
+  const focusFirst = (attempt: number) => {
     const els = focusables();
     if (document.activeElement === document.body && els.length) els[0].focus({ preventScroll: true });
+    if (attempt < 3 && document.activeElement === document.body) window.setTimeout(() => focusFirst(attempt + 1), 700);
   };
-  window.setTimeout(focusFirst, 350);
+  window.setTimeout(() => focusFirst(0), 350);
+}
+
+/**
+ * Last resort for a TV that doesn't say it is one (Fire TV reports the phone UI mode on some models): the first
+ * D-pad key press is proof enough, so the 10-foot UI turns on then.
+ */
+export function installTvModeOnRemoteUse() {
+  if (installed) return;
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      if (installed) return;
+      if (!/^(Arrow|Enter|GoBack|BrowserBack)/.test(event.key)) return;
+      document.documentElement.dataset.tv = "1";
+      installTvMode();
+    },
+    { capture: true },
+  );
 }
