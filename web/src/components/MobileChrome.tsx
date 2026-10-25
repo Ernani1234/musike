@@ -28,7 +28,7 @@ export function TabBar() {
               end={end}
               className={({ isActive }) =>
                 cn(
-                  "relative flex h-full flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
+                  "relative flex h-full flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium transition-colors",
                   isActive ? "text-fg" : "text-fg-3",
                 )
               }
@@ -37,7 +37,7 @@ export function TabBar() {
                 <>
                   <span
                     className={cn(
-                      "absolute top-0 h-[3px] w-8 rounded-b-full bg-accent transition-transform duration-300 ease-out-expo",
+                      "absolute top-0 h-[0.1875rem] w-8 rounded-b-full bg-accent transition-transform duration-300 ease-out-expo",
                       isActive ? "scale-x-100" : "scale-x-0",
                     )}
                   />
@@ -75,7 +75,7 @@ export function MiniPlayer() {
             className="flex min-w-0 flex-1 items-center gap-3 text-left"
             aria-label={t.player.openNowPlaying(track.title)}
           >
-            <Artwork src={track.thumb} className="size-11 rounded-[10px]" />
+            <Artwork src={track.thumb} className="size-11 rounded-[0.625rem]" />
             <span className="min-w-0">
               <span className="block truncate text-sm font-medium">{track.title}</span>
               <span className={cn("block truncate text-xs", status === "error" ? "text-danger" : "text-fg-2")}>
@@ -91,7 +91,7 @@ export function MiniPlayer() {
           >
             <PlayPauseIcon size={24} />
           </button>
-          <span className="absolute inset-x-3 bottom-0 h-[2px] rounded-full bg-surface-4">
+          <span className="absolute inset-x-3 bottom-0 h-[0.125rem] rounded-full bg-surface-4">
             <span className="block h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
           </span>
         </div>

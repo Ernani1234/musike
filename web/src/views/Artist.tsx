@@ -28,7 +28,7 @@ export default function Artist() {
     <div className="pb-8">
       <PageHeader title={name} actions={<BackButton fallback={paths.search} />} />
 
-      <div className="relative mx-4 overflow-hidden rounded-[20px] bg-surface-2 ring-1 ring-line md:mx-6">
+      <div className="relative mx-4 overflow-hidden rounded-[1.25rem] bg-surface-2 ring-1 ring-line md:mx-6">
         {page.status === "ok" && page.data.banner && (
           <div className="absolute inset-0">
             <Artwork src={page.data.banner} className="size-full" />
@@ -38,7 +38,7 @@ export default function Artist() {
         <div aria-hidden="true" className="absolute inset-0 bg-linear-to-t from-black/80 via-black/25 to-transparent" />
         <div className="relative flex min-h-44 flex-col justify-end gap-1 p-5 md:min-h-60 md:p-8">
           <span className="text-xs font-medium text-white/75">{t.artist.label}</span>
-          <h1 className="text-[28px] leading-[1.1] font-bold tracking-tight break-words text-white md:text-5xl">{name}</h1>
+          <h1 className="text-[1.75rem] leading-[1.1] font-bold tracking-tight break-words text-white md:text-5xl">{name}</h1>
         </div>
       </div>
 

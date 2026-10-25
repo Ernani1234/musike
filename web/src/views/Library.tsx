@@ -16,13 +16,13 @@ function Entry({ to, name, kind, tracks, sub }: { to: string; name: string; kind
     <li>
       <Link
         to={to}
-        className="group flex items-center gap-3 rounded-[16px] p-2 transition-colors hover:bg-surface-2 md:flex-col md:items-stretch md:gap-3 md:p-3"
+        className="group flex items-center gap-3 rounded-[1rem] p-2 transition-colors hover:bg-surface-2 md:flex-col md:items-stretch md:gap-3 md:p-3"
       >
         <Cover
           kind={kind}
           tracks={tracks}
           iconSize={26}
-          className="size-16 shrink-0 rounded-[12px] md:aspect-square md:size-auto md:w-full md:rounded-[14px] md:shadow-[0_12px_32px_rgb(0_0_0/0.3)]"
+          className="size-16 shrink-0 rounded-[0.75rem] md:aspect-square md:size-auto md:w-full md:rounded-[0.875rem] md:shadow-[0_12px_32px_rgb(0_0_0/0.3)]"
         />
         <span className="min-w-0">
           <span className="block truncate font-medium">{name}</span>

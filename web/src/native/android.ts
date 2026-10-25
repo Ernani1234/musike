@@ -1,6 +1,6 @@
 import { App } from "@capacitor/app";
 import { Capacitor, registerPlugin, SystemBars, SystemBarsStyle } from "@capacitor/core";
-import { installTvMode } from "../tv/tvMode";
+import { installTvMode, installTvModeOnRemoteUse, rememberTv } from "../tv/tvMode";
 
 /** MusikeDevicePlugin.java: what kind of device this is. */
 const Device = registerPlugin<{ info(): Promise<{ tv: boolean }> }>("MusikeDevice", {
@@ -8,11 +8,14 @@ const Device = registerPlugin<{ info(): Promise<{ tv: boolean }> }>("MusikeDevic
 });
 
 // How the app fits into Android itself: Android TV, the Back button and the system bars.
-if (Capacitor.isNativePlatform()) {
+if (Capacitor.getPlatform() === "android") {
   // One APK for phones and TVs: on a TV, switch to the remote-friendly 10-foot UI (web/src/tv).
+  installTvModeOnRemoteUse();
   void Device.info()
     .then(({ tv }) => {
       if (!tv) return;
+      // Stored, so the next start brings up the TV UI from the first frame instead of painting the phone one.
+      rememberTv(true);
       document.documentElement.dataset.tv = "1";
       installTvMode();
     })

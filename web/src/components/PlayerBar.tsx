@@ -20,7 +20,7 @@ export function PlayerBar() {
 
   return (
     <div className="island shrink-0">
-      <div className="island-core grid h-[84px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 px-3 lg:px-4">
+      <div className="island-core grid h-[5.25rem] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 px-3 lg:px-4">
         <div className="flex min-w-0 items-center gap-3">
           {track ? (
             <>
@@ -28,13 +28,13 @@ export function PlayerBar() {
                 type="button"
                 onClick={() => togglePanel("playing")}
                 aria-label={t.player.showNowPlaying}
-                className="group relative shrink-0 rounded-[10px] transition-transform active:scale-[0.96]"
+                className="group relative shrink-0 rounded-[0.625rem] transition-transform active:scale-[0.96]"
               >
-                <Artwork src={track.thumb} className="size-14 rounded-[10px]" />
+                <Artwork src={track.thumb} className="size-14 rounded-[0.625rem]" />
               </button>
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{track.title}</p>
-                <p className={cn("truncate text-[13px]", status === "error" ? "text-danger" : "text-fg-2")}>
+                <p className={cn("truncate text-[0.8125rem]", status === "error" ? "text-danger" : "text-fg-2")}>
                   {statusText ?? track.artist}
                 </p>
               </div>

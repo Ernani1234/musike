@@ -1,4 +1,4 @@
-import { ClockIcon, DotsThreeIcon, HeartIcon, VideoCameraIcon } from "@phosphor-icons/react";
+import { ArrowCircleDownIcon, ClockIcon, DotsThreeIcon, HeartIcon, VideoCameraIcon } from "@phosphor-icons/react";
 import { memo, type MouseEvent } from "react";
 import { useT } from "../i18n";
 import { cn, formatTime } from "../lib/format";
@@ -6,6 +6,7 @@ import type { Track } from "../lib/types";
 import { selectCurrent, usePlayer } from "../player/player";
 import { useAppearance } from "../stores/appearance";
 import { useLibrary } from "../stores/library";
+import { offlineUi, useOffline } from "../stores/offline";
 import { useUi } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { Equalizer } from "./Brand";
@@ -23,6 +24,8 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, s
   const isPlaying = usePlayer((s) => s.status === "playing" || s.status === "loading");
   const isFavorite = useLibrary((s) => s.favorites.some((t) => t.id === track.id));
   const toggleFavorite = useLibrary((s) => s.toggleFavorite);
+  // Saved on the device: a small mark by the artist, so a downloaded list is obvious at a glance.
+  const isSaved = useOffline((s) => s.entries[track.id] !== undefined);
   const openMenu = useUi((s) => s.openMenu);
   const t = useT();
 
@@ -51,25 +54,28 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, s
         className="absolute inset-0 rounded-xl focus-visible:outline-offset-[-2px]"
       />
 
-      <span className="pointer-events-none hidden justify-center font-mono text-[13px] text-fg-3 tabular-nums md:flex">
+      <span className="pointer-events-none hidden justify-center font-mono text-[0.8125rem] text-fg-3 tabular-nums md:flex">
         {isCurrent ? <Equalizer live={isPlaying} /> : position + 1}
       </span>
 
       <div className="pointer-events-none relative">
-        <Artwork src={track.thumb} className="size-11 rounded-[10px]" />
+        <Artwork src={track.thumb} className="size-11 rounded-[0.625rem]" />
         {isCurrent && (
-          <span className="absolute inset-0 grid place-items-center rounded-[10px] bg-black/45 md:hidden">
+          <span className="absolute inset-0 grid place-items-center rounded-[0.625rem] bg-black/45 md:hidden">
             <Equalizer live={isPlaying} />
           </span>
         )}
       </div>
 
       <div className="pointer-events-none min-w-0">
-        <p className={cn("truncate text-[15px] leading-tight font-medium", isCurrent ? "text-accent-text" : "text-fg")}>
+        <p className={cn("truncate text-[0.9375rem] leading-tight font-medium", isCurrent ? "text-accent-text" : "text-fg")}>
           {track.title}
         </p>
-        <p className="mt-0.5 flex items-center gap-1.5 truncate text-[13px] text-fg-2">
+        <p className="mt-0.5 flex items-center gap-1.5 truncate text-[0.8125rem] text-fg-2">
           {track.kind === "video" && <VideoCameraIcon size={13} className="shrink-0 text-fg-3" aria-label={t.common.video} />}
+          {isSaved && offlineUi() && (
+            <ArrowCircleDownIcon size={13} weight="fill" className="shrink-0 text-accent-text" aria-label={t.offline.downloaded} />
+          )}
           <span className="truncate">{track.artist || t.common.youtube}</span>
         </p>
       </div>
@@ -89,7 +95,7 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, s
         >
           <HeartIcon size={17} weight={isFavorite ? "fill" : "regular"} />
         </button>
-        <span className="pointer-events-none w-11 text-right font-mono text-[13px] text-fg-3 tabular-nums">
+        <span className="pointer-events-none w-11 text-right font-mono text-[0.8125rem] text-fg-3 tabular-nums">
           {track.duration ? formatTime(track.duration) : ""}
         </span>
       </div>
@@ -136,7 +142,7 @@ export function TrackList({ tracks, context, playlistId, showAlbum: albumWanted 
           <span />
           <span>{t.trackList.title}</span>
           {showAlbum && <span className="hidden lg:block">{t.trackList.album}</span>}
-          <span className="flex w-[84px] justify-end pr-0.5">
+          <span className="flex w-[5.25rem] justify-end pr-0.5">
             <ClockIcon size={15} aria-label={t.trackList.duration} />
           </span>
           <span className="w-9" />
@@ -165,7 +171,7 @@ export function TrackListSkeleton({ rows = 8 }: { rows?: number }) {
       {Array.from({ length: rows }, (_, i) => (
         <li key={i} className="flex items-center gap-3 px-2 py-1.5 md:px-3">
           <span className="hidden w-7 md:block" />
-          <span className="skeleton size-11 rounded-[10px]" />
+          <span className="skeleton size-11 rounded-[0.625rem]" />
           <span className="flex flex-1 flex-col gap-2">
             <span className="skeleton h-3.5 rounded-full" style={{ width: `${46 + ((i * 17) % 38)}%` }} />
             <span className="skeleton h-3 rounded-full" style={{ width: `${22 + ((i * 11) % 20)}%` }} />

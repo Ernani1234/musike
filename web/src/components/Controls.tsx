@@ -27,12 +27,12 @@ import { Slider } from "./Slider";
 export function PlayPauseIcon({ size = 22 }: { size?: number }) {
   const status = usePlayer((s) => s.status);
   if (status === "loading") {
-    return <span className="block size-[18px] animate-spin rounded-full border-2 border-current border-t-transparent" />;
+    return <span className="block size-[1.125rem] animate-spin rounded-full border-2 border-current border-t-transparent" />;
   }
   return status === "playing" ? <PauseIcon size={size} weight="fill" /> : <PlayIcon size={size} weight="fill" />;
 }
 
-export function Transport({ big = false }: { big?: boolean }) {
+export function Transport({ big = false, disc = 0, icon = 0 }: { big?: boolean; disc?: number | string; icon?: number }) {
   const t = useT();
   const p = usePlayer(
     useShallow((s) => ({
@@ -50,7 +50,7 @@ export function Transport({ big = false }: { big?: boolean }) {
   const hasTrack = p.hasQueue;
   const RepeatGlyph = p.repeat === "one" ? RepeatOnceIcon : RepeatIcon;
   const repeatLabel = { off: t.player.repeatOff, all: t.player.repeatAll, one: t.player.repeatOne }[p.repeat];
-  const iconSize = big ? 26 : 19;
+  const iconSize = icon || (big ? 26 : 19);
 
   return (
     <div className={cn("flex items-center", big ? "justify-between" : "gap-2")}>
@@ -69,7 +69,7 @@ export function Transport({ big = false }: { big?: boolean }) {
       </IconButton>
       <PlayDisc
         label={p.status === "playing" ? t.common.pause : t.common.play}
-        px={big ? 72 : 40}
+        px={disc || (big ? 72 : 40)}
         onClick={p.toggle}
         disabled={!hasTrack}
       >
@@ -101,8 +101,8 @@ export function Scrubber({ touch = false, className }: { touch?: boolean; classN
   const [scrub, setScrub] = useState<number | null>(null);
   const shown = scrub ?? position;
 
-  const time = <span className="w-10 shrink-0 font-mono text-[11px] text-fg-3 tabular-nums">{formatTime(shown)}</span>;
-  const total = <span className="w-10 shrink-0 text-right font-mono text-[11px] text-fg-3 tabular-nums">{formatTime(duration)}</span>;
+  const time = <span className="w-10 shrink-0 font-mono text-[0.6875rem] text-fg-3 tabular-nums">{formatTime(shown)}</span>;
+  const total = <span className="w-10 shrink-0 text-right font-mono text-[0.6875rem] text-fg-3 tabular-nums">{formatTime(duration)}</span>;
 
   if (touch) {
     return (
@@ -172,7 +172,7 @@ export function ModeSwitch({ className }: { className?: string }) {
 
   const seg = (on: boolean) =>
     cn(
-      "flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium transition-colors duration-200",
+      "flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[0.8125rem] font-medium transition-colors duration-200",
       on ? "bg-surface-4 text-fg shadow-[inset_0_1px_0_var(--highlight)]" : "text-fg-2 hover:text-fg",
     );
 
@@ -199,7 +199,7 @@ export function ModeSwitch({ className }: { className?: string }) {
           onClick={() => setQuality(quality === "sd" ? "hd" : "sd")}
           title={quality === "sd" ? t.player.toHd : t.player.toSd}
           className={cn(
-            "h-9 rounded-full px-3 font-mono text-[12px] font-semibold ring-1 transition-colors",
+            "h-9 rounded-full px-3 font-mono text-[0.75rem] font-semibold ring-1 transition-colors",
             quality === "hd" ? "bg-accent-soft text-accent-text ring-accent/40" : "text-fg-2 ring-line hover:text-fg",
           )}
         >

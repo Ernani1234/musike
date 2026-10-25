@@ -81,7 +81,7 @@ export function BackButton({ fallback, label }: { fallback: string; label?: stri
 export function EmptyState({ icon, title, body, action }: { icon: ReactNode; title: string; body: string; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-      <span className="grid size-16 place-items-center rounded-[18px] bg-surface-3 text-fg-2">{icon}</span>
+      <span className="grid size-16 place-items-center rounded-[1.125rem] bg-surface-3 text-fg-2">{icon}</span>
       <p className="text-lg font-semibold tracking-tight">{title}</p>
       <p className="max-w-[40ch] text-sm text-fg-2">{body}</p>
       {action}

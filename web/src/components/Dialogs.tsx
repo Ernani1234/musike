@@ -50,7 +50,7 @@ export function AddToPlaylistDialog() {
             maxLength={80}
             onChange={(e) => setName(e.target.value)}
             placeholder={t.dialogs.namePlaceholder}
-            className="h-12 rounded-full border border-line-strong bg-surface-1 px-5 text-[15px] placeholder:text-fg-3 focus:border-accent focus:outline-none"
+            className="h-12 rounded-full border border-line-strong bg-surface-1 px-5 text-[0.9375rem] placeholder:text-fg-3 focus:border-accent focus:outline-none"
           />
           <div className="flex justify-end gap-2 pt-1">
             {playlists.length > 0 && (
@@ -74,7 +74,7 @@ export function AddToPlaylistDialog() {
             onClick={() => setCreating(true)}
             className="flex items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-surface-3"
           >
-            <span className="grid size-11 place-items-center rounded-[10px] bg-accent-soft text-accent-text">
+            <span className="grid size-11 place-items-center rounded-[0.625rem] bg-accent-soft text-accent-text">
               <PlusIcon size={20} />
             </span>
             <span className="font-medium">{t.nav.newPlaylist}</span>
@@ -94,7 +94,7 @@ export function AddToPlaylistDialog() {
                 }}
                 className={cn("flex items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-surface-3", has && "opacity-60")}
               >
-                <Artwork src={p.tracks[0]?.thumb} className="size-11 rounded-[10px]" />
+                <Artwork src={p.tracks[0]?.thumb} className="size-11 rounded-[0.625rem]" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{p.name}</span>
                   <span className="block text-sm text-fg-2">{t.common.tracks(p.tracks.length)}</span>
@@ -149,7 +149,7 @@ export function NamePlaylistDialog({
           maxLength={80}
           onChange={(e) => setName(e.target.value)}
           placeholder={t.dialogs.namePlaceholder}
-          className="h-12 rounded-full border border-line-strong bg-surface-1 px-5 text-[15px] placeholder:text-fg-3 focus:border-accent focus:outline-none"
+          className="h-12 rounded-full border border-line-strong bg-surface-1 px-5 text-[0.9375rem] placeholder:text-fg-3 focus:border-accent focus:outline-none"
         />
         <div className="flex justify-end pt-1">
           <button

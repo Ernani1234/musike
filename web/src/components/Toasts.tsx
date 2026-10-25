@@ -39,7 +39,7 @@ export function Toasts() {
                   toast.action!.run();
                   dismiss(toast.id);
                 }}
-                className="h-8 shrink-0 rounded-full bg-accent px-3.5 text-[13px] font-semibold text-accent-ink transition-transform active:scale-95"
+                className="h-8 shrink-0 rounded-full bg-accent px-3.5 text-[0.8125rem] font-semibold text-accent-ink transition-transform active:scale-95"
               >
                 {toast.action.label}
               </button>

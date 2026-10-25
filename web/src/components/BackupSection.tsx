@@ -91,7 +91,7 @@ export function BackupSection() {
       </div>
 
       {pending && s && (
-        <div className="flex flex-col gap-3 rounded-[16px] bg-surface-1 p-4 ring-1 ring-line">
+        <div className="flex flex-col gap-3 rounded-[1rem] bg-surface-1 p-4 ring-1 ring-line">
           <div>
             <p className="truncate text-sm font-medium" title={pending.file}>
               {pending.file}
@@ -110,10 +110,10 @@ export function BackupSection() {
               ["favorites", s.favorites, t.backup.favoritesWord(s.favorites), null],
               ["history", s.history, t.backup.inHistory, null],
             ].map(([key, n, label, sub]) => (
-              <li key={key} className="rounded-[12px] bg-surface-2 px-2 py-2.5">
+              <li key={key} className="rounded-[0.75rem] bg-surface-2 px-2 py-2.5">
                 <span className="block font-mono text-lg font-semibold tabular-nums">{n}</span>
                 <span className="block text-xs text-fg-2">{label}</span>
-                {sub && <span className="block text-[11px] text-fg-3">{sub}</span>}
+                {sub && <span className="block text-[0.6875rem] text-fg-3">{sub}</span>}
               </li>
             ))}
           </ul>
@@ -135,7 +135,7 @@ export function BackupSection() {
                   setConfirmReplace(false);
                 }}
                 className={cn(
-                  "flex items-start gap-3 rounded-[12px] p-3 text-left ring-1 transition-colors",
+                  "flex items-start gap-3 rounded-[0.75rem] p-3 text-left ring-1 transition-colors",
                   mode === value ? "bg-accent-soft ring-accent/50" : "ring-line hover:bg-surface-2",
                 )}
               >

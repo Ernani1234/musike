@@ -24,11 +24,34 @@ const FOCUSABLE = [
 const REPEAT_MS = 90;
 let lastMove = 0;
 
+const HINT = "musike:tv";
+
+/**
+ * Remembered on the device, so the TV UI is there from the first frame: the device check that confirms a TV is an
+ * async bridge call, and until it answers the app would paint the phone layout and then swap.
+ */
+export function rememberTv(isTv: boolean) {
+  try {
+    if (isTv) localStorage.setItem(HINT, "1");
+    else localStorage.removeItem(HINT);
+  } catch {
+    /* private mode */
+  }
+}
+
+function storedTv(): boolean {
+  try {
+    return localStorage.getItem(HINT) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function isTvMode(): boolean {
   if (typeof window === "undefined") return false;
   if (new URLSearchParams(window.location.search).has("tv")) return true;
   if (import.meta.env.VITE_TV === "1") return true;
-  return document.documentElement.dataset.tv === "1";
+  return document.documentElement.dataset.tv === "1" || storedTv();
 }
 
 function shown(el: HTMLElement): boolean {
@@ -232,9 +255,29 @@ export function installTvMode() {
 
   watchDialogs();
 
-  const focusFirst = () => {
+  // The first page renders after its data arrives, so keeping only one attempt can leave the focus on <body>.
+  const focusFirst = (attempt: number) => {
     const els = focusables();
     if (document.activeElement === document.body && els.length) els[0].focus({ preventScroll: true });
+    if (attempt < 3 && document.activeElement === document.body) window.setTimeout(() => focusFirst(attempt + 1), 700);
   };
-  window.setTimeout(focusFirst, 350);
+  window.setTimeout(() => focusFirst(0), 350);
+}
+
+/**
+ * Last resort for a TV that doesn't say it is one (Fire TV reports the phone UI mode on some models): the first
+ * D-pad key press is proof enough, so the 10-foot UI turns on then.
+ */
+export function installTvModeOnRemoteUse() {
+  if (installed) return;
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      if (installed) return;
+      if (!/^(Arrow|Enter|GoBack|BrowserBack)/.test(event.key)) return;
+      document.documentElement.dataset.tv = "1";
+      installTvMode();
+    },
+    { capture: true },
+  );
 }

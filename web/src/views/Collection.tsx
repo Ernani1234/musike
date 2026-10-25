@@ -1,4 +1,13 @@
-import { DotsThreeIcon, MagnifyingGlassIcon, PauseIcon, PencilSimpleIcon, PlayIcon, ShuffleIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  ArrowCircleDownIcon,
+  DotsThreeIcon,
+  MagnifyingGlassIcon,
+  PauseIcon,
+  PencilSimpleIcon,
+  PlayIcon,
+  ShuffleIcon,
+  TrashIcon,
+} from "@phosphor-icons/react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { Cover, type CoverKind } from "../components/Cover";
@@ -13,6 +22,7 @@ import { paths } from "../lib/routes";
 import type { Track } from "../lib/types";
 import { usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
+import { offlineUi, useOffline } from "../stores/offline";
 
 interface Props {
   kind: CoverKind;
@@ -30,6 +40,10 @@ export default function Collection({ kind }: Props) {
   const [renaming, setRenaming] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const saved = useOffline((s) => s.entries);
+  const saving = useOffline((s) => s.active);
+  const saveTracks = useOffline((s) => s.save);
+  const removeMany = useOffline((s) => s.removeMany);
   const t = useT();
 
   const playlist = kind === "playlist" ? lib.playlists.find((p) => p.id === id) : undefined;
@@ -58,6 +72,11 @@ export default function Collection({ kind }: Props) {
   }
 
   const total = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
+  // Downloads: what is left to save here, and the progress of the one being saved right now.
+  const savedCount = tracks.filter((t) => saved[t.id]).length;
+  const canDownload = offlineUi() && kind !== "history" && tracks.length > 0;
+  // Every track in this list already saved: the menu offers to take the download away again.
+  const allSaved = tracks.length > 0 && savedCount === tracks.length;
   // The queue holds exactly these tracks, so this collection is the current playback context.
   const isThisPlaying = tracks.length > 0 && queue.length === tracks.length && queue.every((t) => tracks.some((x) => x.id === t.id));
   const playing = isThisPlaying && (status === "playing" || status === "loading");
@@ -73,12 +92,12 @@ export default function Collection({ kind }: Props) {
             kind={kind}
             tracks={tracks}
             iconSize={64}
-            className="size-44 shrink-0 rounded-[18px] shadow-[0_24px_60px_rgb(0_0_0/0.4)] md:size-52"
+            className="size-44 shrink-0 rounded-[1.125rem] shadow-[0_24px_60px_rgb(0_0_0/0.4)] md:size-52"
           />
           <div className="flex min-w-0 flex-col items-center gap-2 text-center md:items-start md:text-left">
             <span className="hidden text-xs font-medium text-fg-2 md:block">{label}</span>
-            <h1 className="max-w-full text-[28px] leading-[1.1] font-bold tracking-tight break-words md:text-5xl lg:text-6xl">{name}</h1>
-            <p className="font-mono text-[13px] text-fg-2">
+            <h1 className="max-w-full text-[1.75rem] leading-[1.1] font-bold tracking-tight break-words md:text-5xl lg:text-6xl">{name}</h1>
+            <p className="font-mono text-[0.8125rem] text-fg-2">
               {t.common.tracks(tracks.length)}
               {total > 0 && <> · {t.time.total(total)}</>}
             </p>
@@ -106,12 +125,23 @@ export default function Collection({ kind }: Props) {
         >
           <ShuffleIcon size={24} />
         </IconButton>
-        {kind === "playlist" && (
+        {kind !== "history" && (
           <IconButton label={t.collection.more} size="lg" onClick={() => setMoreOpen(true)}>
             <DotsThreeIcon size={26} weight="bold" />
           </IconButton>
         )}
       </div>
+
+      {saving && tracks.some((t) => t.id === saving.id) && (
+        <div className="px-4 pb-4 md:px-6">
+          <div className="h-1 w-full max-w-xs overflow-hidden rounded-full bg-surface-3">
+            <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${Math.round(saving.progress * 100)}%` }} />
+          </div>
+          <p className="mt-1.5 truncate text-xs text-fg-2">
+            {t.offline.ofTotal(savedCount + 1, tracks.length)} · {Math.round(saving.progress * 100)}%
+          </p>
+        </div>
+      )}
 
       <div className="px-2 md:px-3">
         {tracks.length > 0 ? (
@@ -136,10 +166,43 @@ export default function Collection({ kind }: Props) {
         )}
       </div>
 
+      {!playlist && kind === "favorites" && canDownload && (
+        <Modal open={moreOpen} onClose={() => setMoreOpen(false)} title={t.nav.favorites}>
+          <div className="flex flex-col">
+            <button
+              type="button"
+              onClick={() => {
+                setMoreOpen(false);
+                if (allSaved) void removeMany(tracks.map((x) => x.id));
+                else void saveTracks(tracks);
+              }}
+              className="flex items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-surface-3"
+            >
+              <ArrowCircleDownIcon size={18} weight={allSaved ? "fill" : "regular"} className={allSaved ? "text-accent-text" : "text-fg-2"} />
+              {allSaved ? t.offline.removeDownload : t.offline.downloadAll}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {playlist && (
         <>
           <Modal open={moreOpen} onClose={() => setMoreOpen(false)} title={playlist.name}>
             <div className="flex flex-col">
+              {canDownload && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    if (allSaved) void removeMany(tracks.map((x) => x.id));
+                    else void saveTracks(tracks);
+                  }}
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-surface-3"
+                >
+                  <ArrowCircleDownIcon size={18} weight={allSaved ? "fill" : "regular"} className={allSaved ? "text-accent-text" : "text-fg-2"} />
+                  {allSaved ? t.offline.removeDownload : t.offline.downloadAll}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

@@ -19,6 +19,7 @@ import { getLang, getT } from "../i18n";
 import { ApiError, type MusikeApi, type SystemInfo } from "../lib/apiTypes";
 import "./android";
 import { media } from "./media";
+import { offline } from "./offline";
 import { nativeStorage } from "./storage";
 import { forgetUrl, resolveAudio } from "./streams";
 
@@ -85,6 +86,9 @@ export const api: MusikeApi = {
   prepare: (id, signal) =>
     call(async () => {
       if (!VIDEO_ID.test(id)) throw fail(400, "invalidVideoId");
+      // A saved track needs no lookup: its title and length came with the download.
+      const saved = await offline.entry(id);
+      if (saved) return { id, title: saved.track.title, duration: saved.track.duration, hasSdVideo: false };
       const r = await resolveAudio(id);
       return { id, title: r.title, duration: r.duration, hasSdVideo: false };
     }, signal),
@@ -113,8 +117,9 @@ export const api: MusikeApi = {
   },
 };
 
-/** On the phone, the media element plays YouTube's stream directly: resolved here, no proxy needed. */
-export const streamSource = (id: string): Promise<string> => resolveAudio(id).then((r) => r.url);
+/** On the phone, the media element plays YouTube's stream directly: resolved here, no proxy needed. A track saved
+ *  for offline plays from the app's own storage, so it needs no connection at all. */
+export const streamSource = async (id: string): Promise<string> => (await offline.src(id)) ?? (await resolveAudio(id)).url;
 
 export async function explainStreamError(url: string): Promise<{ message: string }> {
   forgetUrl(url);
@@ -129,4 +134,4 @@ export async function saveFile(name: string, text: string) {
 
 export const systemMedia = media;
 
-export const capabilities = { video: false, engineSettings: false, retryOnError: true };
+export const capabilities = { video: false, engineSettings: false, retryOnError: true, offline: offline.supported };

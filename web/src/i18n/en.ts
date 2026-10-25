@@ -225,6 +225,26 @@ export const en = {
     duration: "Duration",
   },
 
+  offline: {
+    title: "Downloads",
+    download: "Download",
+    removeDownload: "Remove download",
+    downloadAll: "Download for offline",
+    removeAll: "Remove all downloads",
+    savedOne: (title: string) => `Saved ${title} for offline`,
+    savedMany: (n: number) => `Saved ${count(n, "track", "tracks")} for offline`,
+    failed: (n: number) => `Couldn't save ${count(n, "track", "tracks")}`,
+    alreadySaved: "Already saved offline",
+    removed: "Download removed",
+    removedAll: "Downloads removed",
+    notDownloaded: "Not downloaded",
+    downloaded: "Saved offline",
+    empty: "Nothing saved yet",
+    emptyBody: "Download a playlist or a single track to keep listening without a connection.",
+    sub: (n: number, size: string) => `${count(n, "track", "tracks")} · ${size}`,
+    ofTotal: (done: number, total: number) => `Saving ${done} of ${total}`,
+  },
+
   search: {
     title: "Search",
     inputLabel: "Search songs, artists, videos or paste a YouTube link",

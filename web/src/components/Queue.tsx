@@ -22,7 +22,7 @@ export function QueueList({ compact = false }: { compact?: boolean }) {
   if (!current) {
     return (
       <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-        <span className="grid size-14 place-items-center rounded-[14px] bg-surface-3 text-fg-3">
+        <span className="grid size-14 place-items-center rounded-[0.875rem] bg-surface-3 text-fg-3">
           <QueueIcon size={26} />
         </span>
         <p className="font-medium">{t.queue.emptyTitle}</p>
@@ -36,7 +36,7 @@ export function QueueList({ compact = false }: { compact?: boolean }) {
     return (
       <li key={`${track.id}-${i}`} className="group relative flex items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-surface-3">
         <button type="button" onClick={() => jumpTo(i)} className="absolute inset-0 rounded-xl" aria-label={t.common.playX(track.title)} />
-        <Artwork src={track.thumb} className="pointer-events-none size-10 rounded-[8px]" />
+        <Artwork src={track.thumb} className="pointer-events-none size-10 rounded-[0.5rem]" />
         <div className="pointer-events-none min-w-0 flex-1">
           <p className={cn("truncate text-sm font-medium", isCurrent ? "text-accent-text" : "text-fg")}>{track.title}</p>
           <p className="truncate text-xs text-fg-2">{track.artist}</p>

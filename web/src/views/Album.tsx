@@ -57,14 +57,14 @@ export default function Album() {
               src={album.art}
               fallback={album.thumb}
               iconSize={64}
-              className="size-44 shrink-0 rounded-[18px] shadow-[0_24px_60px_rgb(0_0_0/0.4)] md:size-52"
+              className="size-44 shrink-0 rounded-[1.125rem] shadow-[0_24px_60px_rgb(0_0_0/0.4)] md:size-52"
             />
           ) : (
-            <span className="skeleton size-44 shrink-0 rounded-[18px] md:size-52" />
+            <span className="skeleton size-44 shrink-0 rounded-[1.125rem] md:size-52" />
           )}
           <div className="flex min-w-0 flex-col items-center gap-2 text-center md:items-start md:text-left">
             {album?.kind && <span className="text-xs font-medium text-fg-2">{album.kind}</span>}
-            <h1 className="max-w-full text-[28px] leading-[1.1] font-bold tracking-tight break-words md:text-5xl">{title}</h1>
+            <h1 className="max-w-full text-[1.75rem] leading-[1.1] font-bold tracking-tight break-words md:text-5xl">{title}</h1>
             {album?.artist &&
               (album.artistId ? (
                 <Link to={paths.artist(album.artistId)} state={{ name: album.artist }} className="font-medium hover:underline">
@@ -73,7 +73,7 @@ export default function Album() {
               ) : (
                 <span className="font-medium">{album.artist}</span>
               ))}
-            {album?.info && <p className="font-mono text-[13px] text-fg-2">{album.info}</p>}
+            {album?.info && <p className="font-mono text-[0.8125rem] text-fg-2">{album.info}</p>}
           </div>
         </div>
       </div>

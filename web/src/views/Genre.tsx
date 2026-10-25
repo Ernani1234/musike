@@ -113,7 +113,7 @@ function GenreBody({ id, lang }: { id: string; lang: Lang }) {
               {artists.map((a) => (
                 <li key={a.id}>
                   <Link to={paths.artist(a.id)} state={{ name: a.name }} className="group flex flex-col gap-2">
-                    <span className="block overflow-hidden rounded-[14px]">
+                    <span className="block overflow-hidden rounded-[0.875rem]">
                       <Artwork
                         src={a.art}
                         fallback={a.thumb}
@@ -183,7 +183,7 @@ function ArtistGridSkeleton() {
     <ul aria-label={t.common.loading} className="grid grid-cols-2 gap-x-3 gap-y-5 px-4 sm:grid-cols-3 md:px-6 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
       {Array.from({ length: 12 }, (_, i) => (
         <li key={i} className="flex flex-col gap-2">
-          <span className="skeleton aspect-square w-full rounded-[14px]" />
+          <span className="skeleton aspect-square w-full rounded-[0.875rem]" />
           <span className="skeleton h-3.5 w-2/3 rounded-full" />
           <span className="skeleton h-3 w-1/2 rounded-full" />
         </li>

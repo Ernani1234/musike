@@ -173,14 +173,14 @@ export function SelectableRow({
       </button>
 
       {position !== undefined && (
-        <span className="hidden w-6 shrink-0 text-center font-mono text-[13px] text-fg-3 tabular-nums md:block">{position}</span>
+        <span className="hidden w-6 shrink-0 text-center font-mono text-[0.8125rem] text-fg-3 tabular-nums md:block">{position}</span>
       )}
 
       <button type="button" onClick={onPlay} aria-label={t.common.playX(track.title)} className="group/art relative shrink-0">
-        <Artwork src={track.thumb} className="size-11 rounded-[10px]" />
+        <Artwork src={track.thumb} className="size-11 rounded-[0.625rem]" />
         <span
           className={cn(
-            "absolute inset-0 grid place-items-center rounded-[10px] bg-black/45 text-white transition-opacity",
+            "absolute inset-0 grid place-items-center rounded-[0.625rem] bg-black/45 text-white transition-opacity",
             isCurrent ? "opacity-100" : "opacity-0 group-hover/art:opacity-100 group-focus-visible/art:opacity-100",
           )}
         >
@@ -189,8 +189,8 @@ export function SelectableRow({
       </button>
 
       <button type="button" onClick={onToggle} className={cn("min-w-0 flex-1 text-left", !selected && "opacity-60")}>
-        <span className={cn("block truncate text-[15px] leading-tight font-medium", isCurrent && "text-accent-text")}>{track.title}</span>
-        <span className="mt-0.5 flex items-center gap-1.5 text-[13px] text-fg-2">
+        <span className={cn("block truncate text-[0.9375rem] leading-tight font-medium", isCurrent && "text-accent-text")}>{track.title}</span>
+        <span className="mt-0.5 flex items-center gap-1.5 text-[0.8125rem] text-fg-2">
           {track.kind === "video" && <VideoCameraIcon size={13} className="shrink-0 text-fg-3" aria-label={t.common.video} />}
           <span className="truncate">
             {track.artist || t.common.youtube}
@@ -201,7 +201,7 @@ export function SelectableRow({
 
       {isFavorite && <HeartIcon size={15} weight="fill" className="shrink-0 text-accent-text" aria-label={t.common.inFavorites} />}
 
-      <span className="hidden w-11 shrink-0 text-right font-mono text-[13px] text-fg-3 tabular-nums md:block">
+      <span className="hidden w-11 shrink-0 text-right font-mono text-[0.8125rem] text-fg-3 tabular-nums md:block">
         {track.duration ? formatTime(track.duration) : ""}
       </span>
 

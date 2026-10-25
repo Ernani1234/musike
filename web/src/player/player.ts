@@ -5,6 +5,7 @@ import { createAudio } from "../lib/audio";
 import { shuffled } from "../lib/format";
 import type { Track } from "../lib/types";
 import { useLibrary } from "../stores/library";
+import { useOffline } from "../stores/offline";
 import { openSettings } from "../stores/system";
 import { toast } from "../stores/ui";
 
@@ -138,6 +139,31 @@ const needsClipLookup = (track: Track, preferVideo: boolean) =>
 export const usePlayer = create<PlayerState>((set, get) => {
   const kindFor = (track: Track): Kind =>
     capabilities.video && get().preferVideo && (track.kind === "video" || !!clipFor.get(track.id)) ? "video" : "audio";
+  /** The next track in the queue that is saved on the device (wrapping once), or null when none is. */
+  const nextSaved = (from: number): number | null => {
+    const queue = get().queue;
+    const saved = useOffline.getState().entries;
+    for (let i = from + 1; i < queue.length; i += 1) if (queue[i]?.id && saved[queue[i]!.id]) return i;
+    for (let i = 0; i < from; i += 1) if (queue[i]?.id && saved[queue[i]!.id]) return i;
+    return null;
+  };
+
+  /** Consecutive skips made because a track couldn't be reached offline; reset once something plays. */
+  let offlineSkips = 0;
+
+  /**
+   * No connection and this track can't be resolved: move on to the next saved one instead of stopping the music.
+   * Bounded by the queue length, so a queue of broken files still ends in an error rather than a loop.
+   */
+  const skipToSaved = (): boolean => {
+    if (offlineSkips >= get().queue.length) return false;
+    const next = nextSaved(get().index);
+    if (next === null) return false;
+    offlineSkips += 1;
+    load(next, { autoplay: true });
+    return true;
+  };
+
   /** The YouTube id to stream: the song itself, or its music video in Video mode. */
   const mediaIdFor = (track: Track, kind: Kind) =>
     kind === "video" && track.kind !== "video" ? clipFor.get(track.id)! : track.id;
@@ -156,6 +182,21 @@ export const usePlayer = create<PlayerState>((set, get) => {
     const s = get();
     const track = s.queue[index];
     if (!track) return;
+
+    // With no connection, only what was saved on the device can play: skip the rest of the queue instead of
+    // stopping the music with an error on every track.
+    if (capabilities.offline && !navigator.onLine) {
+      const device = useOffline.getState();
+      if (device.ready && !device.entries[track.id]) {
+        const saved = nextSaved(index);
+        if (saved === null) {
+          activeMedia()?.pause();
+          set({ status: "error", statusText: { error: getT().offline.notDownloaded }, position: 0 });
+          return;
+        }
+        return load(saved, opts);
+      }
+    }
 
     // Video mode on a song: find its music video first, then load whichever fits.
     if (needsClipLookup(track, s.preferVideo)) {
@@ -212,7 +253,12 @@ export const usePlayer = create<PlayerState>((set, get) => {
       const mine = token;
       source.then(
         (src) => mine === token && start(src),
-        (err: ApiError) => mine === token && report(err.message, err.code),
+        (err: ApiError) => {
+          if (mine !== token) return;
+          // The phone has no connection and this track isn't saved: play the next saved one instead.
+          if (capabilities.offline && skipToSaved()) return;
+          report(err.message, err.code);
+        },
       );
     }
     setMetadata(track);
@@ -239,6 +285,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
   }
 
   function onStarted() {
+    offlineSkips = 0;
     const s = get();
     const track = s.queue[s.index];
     if (!track || recordedToken === token) return;

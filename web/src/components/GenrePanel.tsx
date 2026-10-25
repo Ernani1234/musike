@@ -13,7 +13,7 @@ export function GenrePanel({ id }: { id: string }) {
   const genres = useRemote<Genre[]>(`genres:${lang}`, () => api.genres());
 
   return (
-    <div id={id} className="rounded-[16px] bg-surface-2 p-3 ring-1 ring-line">
+    <div id={id} className="rounded-[1rem] bg-surface-2 p-3 ring-1 ring-line">
       <p className="mb-2.5 px-1 text-xs font-medium text-fg-2">{t.search.exploreGenres}</p>
 
       {genres.status === "loading" && (

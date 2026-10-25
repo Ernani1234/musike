@@ -46,7 +46,7 @@ function SettingsButton() {
       {attention && (
         <>
           <span className="absolute top-2 right-[calc(50%-14px)] size-2 rounded-full bg-accent ring-2 ring-surface-2 wide:hidden" />
-          <span className="hidden rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent-text wide:inline">
+          <span className="hidden rounded-full bg-accent-soft px-2 py-0.5 text-[0.6875rem] font-semibold text-accent-text wide:inline">
             {updatable ? t.nav.updatePill : t.nav.checkPill}
           </span>
         </>
@@ -64,7 +64,7 @@ function RailLink({ to, label, sub, end, children }: { to: string; label: string
       title={label}
       className={({ isActive }) =>
         cn(
-          "group flex items-center justify-center gap-3 rounded-[14px] p-1.5 transition-colors duration-200 wide:justify-start",
+          "group flex items-center justify-center gap-3 rounded-[0.875rem] p-1.5 transition-colors duration-200 wide:justify-start",
           "hover:bg-surface-3 wide:pr-3",
           isActive && "wide:bg-surface-3",
         )
@@ -74,7 +74,7 @@ function RailLink({ to, label, sub, end, children }: { to: string; label: string
         <>
           <span
             className={cn(
-              "relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-[12px] transition-[box-shadow,transform] duration-200 ease-out-expo group-active:scale-95",
+              "relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-[0.75rem] transition-[box-shadow,transform] duration-200 ease-out-expo group-active:scale-95",
               isActive ? "ring-2 ring-accent ring-offset-2 ring-offset-surface-2" : "",
             )}
           >
@@ -102,7 +102,7 @@ export function Rail() {
   const [creating, setCreating] = useState(false);
 
   return (
-    <aside className="island hidden w-[78px] shrink-0 md:flex wide:w-[256px]">
+    <aside className="island hidden w-[4.875rem] shrink-0 md:flex wide:w-[16rem]">
       <div className="island-core flex w-full flex-col overflow-hidden">
         <div className="flex h-16 items-center justify-center wide:justify-start wide:px-4 [@media(max-height:540px)]:h-12">
           <LogoMark className="size-8 text-accent-text wide:hidden" />

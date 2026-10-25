@@ -219,6 +219,26 @@ export const pt: Messages = {
     duration: "Duração",
   },
 
+  offline: {
+    title: "Downloads",
+    download: "Baixar",
+    removeDownload: "Remover download",
+    downloadAll: "Baixar para offline",
+    removeAll: "Remover todos os downloads",
+    savedOne: (title) => `${title} salva para offline`,
+    savedMany: (n) => `${count(n, "faixa", "faixas")} salvas para offline`,
+    failed: (n) => `Não foi possível baixar ${count(n, "faixa", "faixas")}`,
+    alreadySaved: "Já está salvo para offline",
+    removed: "Download removido",
+    removedAll: "Downloads removidos",
+    notDownloaded: "Não baixada",
+    downloaded: "Salva para offline",
+    empty: "Nada salvo ainda",
+    emptyBody: "Baixe uma playlist ou uma música para continuar ouvindo sem conexão.",
+    sub: (n, size) => `${count(n, "faixa", "faixas")} · ${size}`,
+    ofTotal: (done, total) => `Baixando ${done} de ${total}`,
+  },
+
   search: {
     title: "Buscar",
     inputLabel: "Buscar músicas, artistas, vídeos ou colar um link do YouTube",

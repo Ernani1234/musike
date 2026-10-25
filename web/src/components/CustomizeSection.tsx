@@ -15,7 +15,7 @@ export function AccentPicker() {
 
   return (
     <div className="flex flex-col gap-2 pt-1">
-      <p className="text-[13px] text-fg-2">{t.customize.accent}</p>
+      <p className="text-[0.8125rem] text-fg-2">{t.customize.accent}</p>
       <div role="radiogroup" aria-label={t.customize.accent} className="flex flex-wrap items-center gap-2.5">
         {ACCENTS.map(({ id, color }) => {
           const on = accent === color;
@@ -100,7 +100,7 @@ export function LayoutSection() {
   return (
     <section className="flex flex-col gap-2">
       <h3 className="text-xs font-medium text-fg-3">{t.customize.layout}</h3>
-      <div className="flex flex-col divide-y divide-line rounded-[16px] bg-surface-1 ring-1 ring-line">
+      <div className="flex flex-col divide-y divide-line rounded-[1rem] bg-surface-1 ring-1 ring-line">
         <SwitchRow label={t.customize.panel} body={t.customize.panelBody} checked={panelOpen} onChange={setPanelDocked} />
         <SwitchRow label={t.customize.sidebarPlaylists} checked={a.sidebarPlaylists} onChange={(v) => a.set({ sidebarPlaylists: v })} />
         <SwitchRow
@@ -113,7 +113,7 @@ export function LayoutSection() {
         <SwitchRow label={t.customize.texture} checked={a.texture} onChange={(v) => a.set({ texture: v })} />
       </div>
 
-      <p className="pt-2 text-[13px] text-fg-2">{t.customize.home}</p>
+      <p className="pt-2 text-[0.8125rem] text-fg-2">{t.customize.home}</p>
       <div className="flex flex-wrap gap-2">
         {homeSections.map(([key, label]) => (
           <button
@@ -123,7 +123,7 @@ export function LayoutSection() {
             aria-checked={a[key]}
             onClick={() => a.set({ [key]: !a[key] })}
             className={cn(
-              "flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium ring-1 transition-colors",
+              "flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[0.8125rem] font-medium ring-1 transition-colors",
               a[key] ? "bg-accent-soft text-accent-text ring-accent/40" : "text-fg-2 ring-line hover:text-fg",
             )}
           >
@@ -139,7 +139,7 @@ export function LayoutSection() {
           a.reset();
           setPanelDocked(true);
         }}
-        className="mt-1 self-start text-[13px] font-medium text-fg-2 underline-offset-2 hover:text-fg hover:underline"
+        className="mt-1 self-start text-[0.8125rem] font-medium text-fg-2 underline-offset-2 hover:text-fg hover:underline"
       >
         {t.customize.reset}
       </button>

@@ -1,4 +1,5 @@
 import {
+  ArrowCircleDownIcon,
   ArrowSquareOutIcon,
   HeartIcon,
   ListPlusIcon,
@@ -16,6 +17,7 @@ import { useT } from "../i18n";
 import { cn } from "../lib/format";
 import { usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
+import { offlineUi, useOffline } from "../stores/offline";
 import { useUi } from "../stores/ui";
 import { Artwork } from "./Artwork";
 
@@ -26,7 +28,7 @@ function Item({ icon, children, onClick, danger }: { icon: ReactNode; children: 
       role="menuitem"
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[15px] transition-colors md:py-2 md:text-sm",
+        "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[0.9375rem] transition-colors md:py-2 md:text-sm",
         "hover:bg-surface-3 focus-visible:bg-surface-3",
         danger ? "text-danger" : "text-fg",
       )}
@@ -42,6 +44,8 @@ export function TrackMenu() {
   const close = useUi((s) => s.closeMenu);
   const openAddToPlaylist = useUi((s) => s.openAddToPlaylist);
   const isFavorite = useLibrary((s) => (menu ? s.favorites.some((t) => t.id === menu.track.id) : false));
+  const isSaved = useOffline((s) => (menu ? s.entries[menu.track.id] !== undefined : false));
+  const saving = useOffline((s) => s.active?.id === menu?.track.id);
   const isMd = useMediaQuery(MD);
   const box = useRef<HTMLDivElement>(null);
   const t = useT();
@@ -93,6 +97,18 @@ export function TrackMenu() {
       >
         {isFavorite ? t.common.removeFromFavorites : t.common.addToFavorites}
       </Item>
+      {offlineUi() && (
+        <Item
+          icon={<ArrowCircleDownIcon size={18} weight={isSaved ? "fill" : "regular"} className={isSaved ? "text-accent-text" : ""} />}
+          onClick={run(() =>
+            isSaved
+              ? void useOffline.getState().remove(menu.track.id)
+              : void useOffline.getState().save([menu.track]),
+          )}
+        >
+          {saving ? t.offline.download : isSaved ? t.offline.removeDownload : t.offline.download}
+        </Item>
+      )}
       <Item icon={<PlaylistIcon size={18} />} onClick={() => openAddToPlaylist([menu.track])}>
         {t.trackMenu.addToPlaylist}
       </Item>
@@ -149,7 +165,7 @@ export function TrackMenu() {
               <div className="island-core p-2">
                 <div className="mx-auto mt-1 mb-2 h-1 w-9 rounded-full bg-surface-4" />
                 <div className="flex items-center gap-3 px-3 pb-3">
-                  <Artwork src={menu.track.thumb} className="size-12 rounded-[10px]" />
+                  <Artwork src={menu.track.thumb} className="size-12 rounded-[0.625rem]" />
                   <div className="min-w-0">
                     <p className="truncate font-medium">{menu.track.title}</p>
                     <p className="truncate text-sm text-fg-2">{menu.track.artist}</p>

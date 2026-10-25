@@ -51,7 +51,7 @@ export function Modal({ open, onClose, title, children }: Props) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={from}
             transition={{ type: "spring", stiffness: 420, damping: 38 }}
-            className="island safe-bottom relative w-full rounded-b-none md:mx-4 md:max-w-md md:rounded-[20px]"
+            className="island safe-bottom relative w-full rounded-b-none md:mx-4 md:max-w-md md:rounded-[1.25rem]"
           >
             <div className="island-core p-4 md:p-5">
               <div className="mb-3 flex items-center justify-between gap-3">

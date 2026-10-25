@@ -219,7 +219,7 @@ export default function Search() {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={t.search.placeholder}
-            className="h-12 w-full rounded-full border border-line-strong bg-surface-2 pr-24 pl-12 text-[16px] placeholder:text-fg-3 focus:border-accent focus:bg-surface-1 focus:outline-none md:h-13 [&::-webkit-search-cancel-button]:hidden"
+            className="h-12 w-full rounded-full border border-line-strong bg-surface-2 pr-24 pl-12 text-[1rem] placeholder:text-fg-3 focus:border-accent focus:bg-surface-1 focus:outline-none md:h-13 [&::-webkit-search-cancel-button]:hidden"
           />
           <div className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-2">
             {!text && <kbd className="kbd hidden md:inline">/</kbd>}
@@ -244,7 +244,7 @@ export default function Search() {
           <Link
             to={paths.searchList}
             state={{ text }}
-            className="flex items-center gap-3 rounded-[16px] bg-accent-soft px-4 py-3 text-sm ring-1 ring-line transition-colors hover:bg-surface-3"
+            className="flex items-center gap-3 rounded-[1rem] bg-accent-soft px-4 py-3 text-sm ring-1 ring-line transition-colors hover:bg-surface-3"
           >
             <ListBulletsIcon size={20} className="shrink-0 text-accent-text" />
             <span className="min-w-0 flex-1">
@@ -265,7 +265,7 @@ export default function Search() {
                   setText(s);
                   setQuery(s);
                 }}
-                className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-surface-2 px-3 text-[13px] text-fg-2 ring-1 ring-line transition-colors hover:text-fg"
+                className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-surface-2 px-3 text-[0.8125rem] text-fg-2 ring-1 ring-line transition-colors hover:text-fg"
               >
                 <ArrowUpLeftIcon size={13} className="text-fg-3" /> {s}
               </button>
@@ -317,9 +317,9 @@ export default function Search() {
               <button
                 type="button"
                 onClick={() => playTrack(linkTrack)}
-                className="flex w-full items-center gap-4 rounded-[16px] bg-surface-2 p-3 text-left ring-1 ring-line transition-colors hover:bg-surface-3"
+                className="flex w-full items-center gap-4 rounded-[1rem] bg-surface-2 p-3 text-left ring-1 ring-line transition-colors hover:bg-surface-3"
               >
-                <Artwork src={linkTrack.thumb} className="aspect-video w-28 rounded-[10px] md:w-36" />
+                <Artwork src={linkTrack.thumb} className="aspect-video w-28 rounded-[0.625rem] md:w-36" />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5 text-xs font-medium text-accent-text">
                     <LinkIcon size={14} /> {t.search.youtubeLink}

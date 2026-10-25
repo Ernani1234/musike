@@ -34,7 +34,7 @@ export const IconButton = forwardRef<HTMLButtonElement, Props>(function IconButt
 });
 
 /** The primary play button: a solid Volt disc. */
-export const PlayDisc = forwardRef<HTMLButtonElement, Omit<Props, "active"> & { px?: number }>(function PlayDisc(
+export const PlayDisc = forwardRef<HTMLButtonElement, Omit<Props, "active"> & { px?: number | string }>(function PlayDisc(
   { label, className, children, px = 48, ...rest },
   ref,
 ) {

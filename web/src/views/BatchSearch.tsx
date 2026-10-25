@@ -163,7 +163,7 @@ export default function BatchSearch() {
             }
           }}
           placeholder={t.batch.placeholder}
-          className="scroll-area min-h-24 w-full resize-y rounded-[20px] border border-line-strong bg-surface-2 px-5 py-3.5 text-[16px] placeholder:text-fg-3 focus:border-accent focus:bg-surface-1 focus:outline-none"
+          className="scroll-area min-h-24 w-full resize-y rounded-[1.25rem] border border-line-strong bg-surface-2 px-5 py-3.5 text-[1rem] placeholder:text-fg-3 focus:border-accent focus:bg-surface-1 focus:outline-none"
         />
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-fg-3">
@@ -221,9 +221,9 @@ function EntryRow({ entry, index }: { entry: Entry; index: number }) {
     return (
       <li className="flex items-center gap-3 px-2 py-1.5 md:px-3">
         <span className="size-6 shrink-0" />
-        <span className="skeleton size-11 shrink-0 rounded-[10px]" />
+        <span className="skeleton size-11 shrink-0 rounded-[0.625rem]" />
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <span className="truncate text-[15px] text-fg-3">{entry.query}</span>
+          <span className="truncate text-[0.9375rem] text-fg-3">{entry.query}</span>
           <span className="skeleton h-3 w-1/4 rounded-full" />
         </span>
       </li>
@@ -234,12 +234,12 @@ function EntryRow({ entry, index }: { entry: Entry; index: number }) {
     return (
       <li className="flex items-center gap-3 px-2 py-1.5 md:px-3">
         <span className="size-6 shrink-0" />
-        <span className="grid size-11 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-fg-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-[0.625rem] bg-surface-2 text-fg-3">
           <WarningCircleIcon size={20} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] font-medium">{entry.query}</span>
-          <span className="block text-[13px] text-fg-2">{entry.status === "empty" ? t.batch.notFound : t.batch.failed}</span>
+          <span className="block truncate text-[0.9375rem] font-medium">{entry.query}</span>
+          <span className="block text-[0.8125rem] text-fg-2">{entry.status === "empty" ? t.batch.notFound : t.batch.failed}</span>
         </span>
         <button
           type="button"
@@ -289,10 +289,10 @@ function EntryRow({ entry, index }: { entry: Entry; index: number }) {
                 }}
                 className="flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left hover:bg-surface-2"
               >
-                <Artwork src={opt.thumb} className="size-9 rounded-[8px]" />
+                <Artwork src={opt.thumb} className="size-9 rounded-[0.5rem]" />
                 <span className="min-w-0 flex-1">
                   <span className={cn("block truncate text-sm font-medium", j === entry.pick && "text-accent-text")}>{opt.title}</span>
-                  <span className="block truncate text-[13px] text-fg-2">
+                  <span className="block truncate text-[0.8125rem] text-fg-2">
                     {[opt.artist, opt.album].filter(Boolean).join(" · ") || t.common.youtube}
                   </span>
                 </span>

@@ -20,6 +20,7 @@ const same = (a: string, b: string) => path.normalize(a).toLowerCase() === path.
 function nativeBackend(): Plugin {
   const swaps: [from: string, to: string][] = [
     [src("lib", "api.ts"), src("native", "api.ts")],
+    [src("lib", "offline.ts"), src("native", "offline.ts")],
     [server("config.ts"), src("native", "shims", "config.ts")],
     [server("ytdlp.ts"), src("native", "shims", "ytdlp.ts")],
   ];
