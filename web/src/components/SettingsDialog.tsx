@@ -10,6 +10,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { LANGUAGES, useI18n, useT, type Lang } from "../i18n";
 import { capabilities, type Channel } from "../lib/api";
+import { desktop } from "../lib/desktop";
 import { cn } from "../lib/format";
 import { useSystem } from "../stores/system";
 import { useUi } from "../stores/ui";
@@ -47,6 +48,16 @@ function Segmented<T extends string>({
       ))}
     </div>
   );
+}
+
+/**
+ * The "install it yourself" hint is shell-specific: winget only exists on Windows, so the desktop app
+ * picks the command for the platform it is running on. The browser build has no bridge and keeps winget.
+ */
+function depFix(tool: "deno" | "ffmpeg", platform: string | undefined): string {
+  if (!platform || platform === "win32") return tool === "deno" ? "winget install DenoLand.Deno" : "winget install yt-dlp.FFmpeg";
+  if (platform === "darwin") return `brew install ${tool}`;
+  return tool === "deno" ? "curl -fsSL https://deno.land/install.sh | sh" : "sudo apt install ffmpeg";
 }
 
 function Dependency({ name, role, path, fix }: { name: string; role: string; path: string | null; fix: string }) {
@@ -237,8 +248,8 @@ export function SettingsDialog() {
 
           {info && (
             <ul className="divide-y divide-line px-1">
-              <Dependency name="Deno" role={t.settings.denoRole} path={info.deno} fix="winget install DenoLand.Deno" />
-              <Dependency name="FFmpeg" role={t.settings.ffmpegRole} path={info.ffmpeg} fix="winget install yt-dlp.FFmpeg" />
+              <Dependency name="Deno" role={t.settings.denoRole} path={info.deno} fix={depFix("deno", desktop?.platform)} />
+              <Dependency name="FFmpeg" role={t.settings.ffmpegRole} path={info.ffmpeg} fix={depFix("ffmpeg", desktop?.platform)} />
             </ul>
           )}
         </section>

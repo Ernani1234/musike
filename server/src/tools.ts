@@ -69,7 +69,10 @@ function find(name: string, dirs: string[]): string | null {
     for (const ext of exts) {
       const file = path.join(dir, name + ext);
       // lstat, not stat: winget.exe is an app execution alias (a reparse point stat can't follow).
-      if (lstatSync(file, { throwIfNoEntry: false })) return file;
+      const stats = lstatSync(file, { throwIfNoEntry: false });
+      // A folder is not a binary. On macOS and Linux the downloaded FFmpeg lives in <bin>/ffmpeg/ffmpeg,
+      // so the bare name matches the folder first; skipping it lets the next candidate find the binary.
+      if (stats && !stats.isDirectory()) return file;
     }
   }
   return null;
