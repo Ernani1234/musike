@@ -3,7 +3,7 @@ import { text, withClient } from "./search.js";
 
 /**
  * A track's audio asked straight from YouTube's API, without yt-dlp. The Android app plays it this way, and the
- * server falls back to it when yt-dlp fails (YouTube's bot check on some connections, an outdated yt-dlp).
+ * server uses it first for audio, with yt-dlp as a fallback.
  *
  * YouTube only serves the first megabyte of a stream to most clients unless the request carries a proof-of-origin
  * token. A few clients don't need one; VISIONOS (the Apple Vision Pro app) is the one yt-dlp itself relies on, and

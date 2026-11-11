@@ -54,8 +54,8 @@ export const api: MusikeApi = {
     request<{ track: Track | null }>(
       `/api/video-for/${t.id}?${new URLSearchParams({ title: t.title, artist: t.artist, duration: String(t.duration || "") })}`,
     ).then((r) => r.track),
-  prepare: (id: string, signal?: AbortSignal) =>
-    request<Prepared>(`/api/prepare/${id}`, {
+  prepare: (id: string, signal?: AbortSignal, kind: "audio" | "video" = "audio") =>
+    request<Prepared>(`/api/prepare/${id}?kind=${kind}`, {
       method: "POST",
       signal,
     }),
