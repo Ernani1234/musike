@@ -178,17 +178,21 @@ export function LyricsView({ compact = false }: { compact?: boolean }) {
     setPaused(true);
   };
 
+  /** Keeps the sung line about 38% from the top of the scroll container. */
+  const centerLine = (index: number, smooth: boolean) => {
+    const container = containerRef.current;
+    const el = lineRefs.current.get(index);
+    if (!container || !el) return;
+    const containerTop = container.getBoundingClientRect().top;
+    const lineTop = el.getBoundingClientRect().top - containerTop + container.scrollTop;
+    container.scrollTo({ top: Math.max(0, lineTop - container.clientHeight * 0.38), behavior: smooth && !reduce ? "smooth" : "auto" });
+  };
+
   useEffect(() => {
     if (!synced) return;
-    const container = containerRef.current;
-    const el = lineRefs.current.get(active);
-    if (!container || !el) return;
     if (Date.now() < pausedUntil.current) return;
-    container.scrollTo({
-      top: Math.max(0, el.offsetTop - container.clientHeight * 0.38),
-      behavior: reduce ? "auto" : "smooth",
-    });
-  }, [active, synced, reduce]);
+    centerLine(active, true);
+  }, [active, synced, reduce]); // eslint-disable-line react-hooks/exhaustive-deps -- centerLine is stable per render
 
   useEffect(() => {
     // New song: back to the top, the auto-scroll takes over from there.
@@ -283,8 +287,10 @@ export function LyricsView({ compact = false }: { compact?: boolean }) {
         ref={containerRef}
         onWheel={suspendAuto}
         onTouchMove={suspendAuto}
-        className={cn("lyrics-fade scroll-area h-full overflow-y-auto overscroll-contain", compact ? "pb-40" : "pb-[55dvh]")}
-        style={{ paddingTop: compact ? undefined : "36dvh" }}
+        className={cn(
+          "lyrics-fade scroll-area h-full overflow-y-auto overscroll-contain",
+          compact ? "pt-10 pb-56" : "pt-[16dvh] pb-[45dvh]",
+        )}
         role="region"
         aria-label={t.nowPlaying.tabLyrics}
       >
@@ -312,10 +318,7 @@ export function LyricsView({ compact = false }: { compact?: boolean }) {
             onClick={() => {
               pausedUntil.current = 0;
               setPaused(false);
-              const container = containerRef.current;
-              const el = lineRefs.current.get(active);
-              if (container && el)
-                container.scrollTo({ top: Math.max(0, el.offsetTop - container.clientHeight * 0.38), behavior: "smooth" });
+              centerLine(active, true);
             }}
             className="absolute bottom-3 left-1/2 flex h-9 -translate-x-1/2 items-center gap-1.5 rounded-full bg-surface-3/90 px-4 text-xs font-medium text-fg shadow-lg ring-1 ring-line backdrop-blur-md"
           >
