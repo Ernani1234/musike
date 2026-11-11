@@ -80,7 +80,11 @@ export const api: MusikeApi = {
       if (!ALBUM_ID.test(id)) throw fail(400, "invalidAlbum");
       return albumPage(id, getLang());
     }, signal),
-  searchAlbums: (q, signal) => call(() => searchAlbums(q.trim().slice(0, 200), getLang()), signal),
+  searchAlbums: (q, signal) =>
+    call(async () => {
+      if (!q.trim()) throw fail(400, "emptyQuery");
+      return searchAlbums(q.trim().slice(0, 200), getLang());
+    }, signal),
   videoFor: (t) => call(() => findVideoFor(t.id, t.title, t.artist, t.duration)),
   prepare: (id, signal) =>
     call(async () => {

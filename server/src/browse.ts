@@ -288,17 +288,32 @@ export async function genreArtists(id: string, offset: number, lang: Lang): Prom
   };
 }
 
+function flexArtist(item: any): string {
+  const sub = text(item?.flex_columns?.[1]?.title);
+  if (!sub) return "";
+  const parts = sub
+    .split(/\s+[•·]\s+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return "";
+  const rest = parts.slice(1);
+  if (rest.length && /^(19|20)\d\d$/.test(rest[rest.length - 1]!)) rest.pop();
+  return rest.join(", ");
+}
+
 /** An artist's most played songs (the "Top songs" shelf, expanded to its full list). */
 function albumCard(item: any): AlbumCard | null {
-  const id = typeof item?.id === "string" ? item.id : "";
+  const rawId = item?.id ?? item?.endpoint?.payload?.browseId;
+  const id = typeof rawId === "string" ? rawId : "";
   if (!ALBUM_ID.test(id)) return null;
   const subtitle = text(item.subtitle);
-  const artists: string[] = (item.artists ?? []).map((a: { name?: string }) => text(a?.name)).filter(Boolean);
+  const meta = `${subtitle} ${text(item?.flex_columns?.[1]?.title)}`;
+  const artists: string[] = (item.artists ?? item.authors ?? []).map((a: { name?: string }) => text(a?.name)).filter(Boolean);
   return {
     id,
     title: text(item.title),
-    artist: artists.join(", ") || text(item.author?.name),
-    year: String(item.year ?? subtitle.match(/\b(19|20)\d\d\b/)?.[0] ?? ""),
+    artist: artists.join(", ") || text(item.author?.name) || flexArtist(item),
+    year: String(item.year || (meta.match(/\b(19|20)\d\d\b/)?.[0] ?? "")),
     ...imagesOf(item),
   };
 }
@@ -395,7 +410,10 @@ const albumPage = cached(60 * MINUTE, async (key): Promise<AlbumPage> => {
 
 export const album = (id: string, lang: Lang) => albumPage(keyOf(lang, id));
 
+// Search results can start with non-album sections (messages, "Showing results for") before the MusicShelf.
 export async function searchAlbums(query: string, lang: Lang): Promise<AlbumCard[]> {
   const result: any = await withClient((yt) => yt.music.search(query, { type: "album" }), lang);
-  return albumCards(itemsOf(result.contents?.[0]));
+  const sections: any[] = Array.isArray(result?.contents) ? result.contents : [];
+  const seen = new Set<string>();
+  return albumCards(sections.flatMap(itemsOf)).filter((a) => !seen.has(a.id) && seen.add(a.id));
 }
