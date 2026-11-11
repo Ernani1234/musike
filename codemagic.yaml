@@ -1,0 +1,22 @@
+# Codemagic build for the unsigned iOS .ipa (the free "For individuals" tier: 500 macOS minutes/month).
+# Setup: sign up at https://codemagic.io/signup with GitHub, connect this repository, then start a
+# build and pick the "ios-ipa" workflow. The .ipa appears in the build's Artifacts tab, unsigned on
+# purpose: Sideloadly, AltStore or SideStore signs it with your own Apple ID when installing.
+workflows:
+  ios-ipa:
+    name: iOS IPA (unsigned)
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      node: 22
+      vars:
+        XCODE_WORKSPACE: App
+    scripts:
+      - name: Install pnpm and dependencies
+        script: |
+          npm install -g pnpm@10
+          pnpm install --frozen-lockfile
+      - name: Build the unsigned IPA
+        script: pnpm --filter @musike/mobile ipa
+    artifacts:
+      - release/*.ipa
