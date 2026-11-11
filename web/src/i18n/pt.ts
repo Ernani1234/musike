@@ -114,6 +114,7 @@ export const pt: Messages = {
       video: "Alternar vídeo",
       theater: "Maximizar vídeo",
       queue: "Fila",
+      lyrics: "Letra",
       search: "Buscar",
       help: "Esta lista",
     },
@@ -170,11 +171,24 @@ export const pt: Messages = {
     startRadio: "Iniciar rádio desta faixa",
     upNext: "A seguir",
     tabPlaying: "Tocando",
+    tabLyrics: "Letra",
     tabQueue: "Fila",
-    panel: "Tocando agora e fila",
+    panel: "Tocando agora, letra e fila",
     closePanel: "Fechar painel",
     backToPlayer: "Voltar ao player",
     showQueue: "Ver fila",
+  },
+
+  lyrics: {
+    show: "Letra",
+    title: "Letra",
+    loading: "Buscando a letra…",
+    none: "Não encontrei a letra desta faixa.",
+    error: "Não consegui carregar a letra. Verifique a conexão e tente de novo.",
+    retry: "Tentar de novo",
+    instrumental: "Faixa instrumental: não há letra para acompanhar.",
+    unsynced: "Esta letra não tem marcação de tempo, então o app não consegue acompanhar a música. Clique numa linha para tocar a partir dela.",
+    source: "Letra de",
   },
 
   queue: {

@@ -120,6 +120,7 @@ export const en = {
       video: "Toggle video",
       theater: "Maximize video",
       queue: "Queue",
+      lyrics: "Lyrics",
       search: "Search",
       help: "This list",
     },
@@ -176,11 +177,24 @@ export const en = {
     startRadio: "Start radio from this track",
     upNext: "Up next",
     tabPlaying: "Playing",
+    tabLyrics: "Lyrics",
     tabQueue: "Queue",
-    panel: "Now playing and queue",
+    panel: "Now playing, lyrics and queue",
     closePanel: "Close panel",
     backToPlayer: "Back to the player",
     showQueue: "Show queue",
+  },
+
+  lyrics: {
+    show: "Lyrics",
+    title: "Lyrics",
+    loading: "Looking for lyrics…",
+    none: "No lyrics found for this track.",
+    error: "Couldn't load the lyrics. Check your connection and try again.",
+    retry: "Try again",
+    instrumental: "Instrumental track: there are no lyrics to sing along.",
+    unsynced: "These lyrics have no timing, so the app can't follow the song. Click a line to play from it.",
+    source: "Lyrics from",
   },
 
   queue: {

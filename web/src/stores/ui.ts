@@ -23,7 +23,7 @@ export interface TrackMenuState {
 }
 
 type Theme = "dark" | "light";
-export type PanelTab = "playing" | "queue";
+export type PanelTab = "playing" | "lyrics" | "queue";
 
 interface UiState {
   theme: Theme;
@@ -38,6 +38,8 @@ interface UiState {
   settingsOpen: boolean;
   /** Cinema view: the video maximized over everything. */
   theater: boolean;
+  /** The lyrics in a centered overlay, over the whole app (the mic button in the player). */
+  lyricsOpen: boolean;
   setTheme: (t: Theme) => void;
   toggleTheme: () => void;
   openPanel: (tab: PanelTab) => void;
@@ -53,6 +55,7 @@ interface UiState {
   setShortcutsOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setTheater: (open: boolean) => void;
+  setLyricsOpen: (open: boolean) => void;
 }
 
 const readTheme = (): Theme => (document.documentElement.dataset.theme === "light" ? "light" : "dark");
@@ -77,6 +80,7 @@ export const useUi = create<UiState>((set, get) => ({
   shortcutsOpen: false,
   settingsOpen: false,
   theater: false,
+  lyricsOpen: false,
 
   setTheme: (theme) => {
     document.documentElement.dataset.theme = theme;
@@ -133,6 +137,7 @@ export const useUi = create<UiState>((set, get) => ({
   setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setTheater: (theater) => set({ theater }),
+  setLyricsOpen: (lyricsOpen) => set({ lyricsOpen }),
 }));
 
 export const toast = (message: string, tone?: Toast["tone"], action?: ToastAction) =>

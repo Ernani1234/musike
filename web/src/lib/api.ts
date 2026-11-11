@@ -4,6 +4,7 @@ import {
   type Channel,
   type ErrorCode,
   type ImportResult,
+  type Lyrics,
   type MusikeApi,
   type Prepared,
   type SystemInfo,
@@ -54,6 +55,16 @@ export const api: MusikeApi = {
     request<{ track: Track | null }>(
       `/api/video-for/${t.id}?${new URLSearchParams({ title: t.title, artist: t.artist, duration: String(t.duration || "") })}`,
     ).then((r) => r.track),
+  lyrics: (t: Track, signal?: AbortSignal) =>
+    request<{ lyrics: Lyrics | null }>(
+      `/api/lyrics/${t.id}?${new URLSearchParams({
+        title: t.title,
+        artist: t.artist,
+        album: t.album ?? "",
+        duration: String(t.duration || ""),
+      })}`,
+      { signal },
+    ).then((r) => r.lyrics),
   prepare: (id: string, signal?: AbortSignal) =>
     request<Prepared>(`/api/prepare/${id}`, {
       method: "POST",

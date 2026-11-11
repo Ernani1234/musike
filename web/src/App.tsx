@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } 
 import { AddToPlaylistDialog, ShortcutsDialog } from "./components/Dialogs";
 import { MiniPlayer, TabBar } from "./components/MobileChrome";
 import { NowPlayingSheet, PanelDrawer, SidePanel } from "./components/NowPlaying";
+import { LyricsOverlay } from "./components/Lyrics";
 import { PlayerBar } from "./components/PlayerBar";
 import { Rail } from "./components/Rail";
 import { TitleBar } from "./components/TitleBar";
@@ -150,6 +151,7 @@ export default function App() {
 
       <PanelDrawer />
       <NowPlayingSheet open={sheetOpen} onClose={closeSheet} />
+      <LyricsOverlay />
       <FloatingVideo />
       <Theater />
       <TrackMenu />

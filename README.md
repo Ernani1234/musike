@@ -59,6 +59,7 @@ Musike started from the idea behind the old Discord music bots: a server that fe
 - **Artists:** greatest hits, plus every album and single
 - **Albums:** open any album and play it in its original order, shuffle it, or save it as a playlist in one click
 - **Search a list:** type several songs separated by commas ("Bohemian Rhapsody, Hotel California, …"). Musike finds each one, picks the best match (you can swap it) and lets you play, favorite or send them all to a playlist
+- **Lyrics:** the mic button (or `Y`) opens the lyrics of the track being played in a centered panel, with the sung line highlighted and followed as the song goes; click a line to play from it. Timed lyrics come from [LRCLIB](https://lrclib.net)
 - Queue with play next, shuffle and repeat (queue or track)
 - **Autoplay radio:** when the queue ends, it keeps going with similar songs
 - Instant seeking (HTTP Range streaming) and the next track preloaded
@@ -340,6 +341,7 @@ On import the server validates every track (YouTube ID, sizes, `https://` images
 | `V` | Switch Audio / Video |
 | `F` | Cinema mode |
 | `Q` | Queue |
+| `Y` | Lyrics |
 | `/` | Search |
 | `?` | Shortcut list |
 
@@ -376,6 +378,7 @@ Every route answers JSON. Errors look like `{ "error": "message", "code"?: "tool
 | `GET` | `/api/artists/:aid` | An artist's greatest hits, albums and singles |
 | `GET` | `/api/albums/:alid` | An album's tracks in order |
 | `GET` | `/api/video-for/:id?title=&artist=&duration=` | A song's official music video |
+| `GET` | `/api/lyrics/:id?title=&artist=&album=&duration=` | The track's lyrics (timed when available), or `null` |
 | `POST` | `/api/prepare/:id` | Resolves a stream before playing |
 | `GET` | `/api/stream/:id/audio` | Audio with HTTP Range |
 | `GET` | `/api/stream/:id/video?q=sd\|hd` | Video with HTTP Range |
@@ -399,6 +402,7 @@ musike/
 │     ├─ app.ts         routes and startup (used by the CLI, the desktop app and Docker)
 │     ├─ browse.ts      genres, artists, albums
 │     ├─ search.ts      search, suggestions, radio and official music videos
+│     ├─ lyrics.ts      lyrics from LRCLIB: timed lines, instrumental flag, 24 h cache
 │     ├─ ytdlp.ts       stream resolution, HD cache, error messages
 │     ├─ stream.ts      proxy with HTTP Range
 │     ├─ library.ts     playlists, favorites, history and backup import

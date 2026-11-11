@@ -6,6 +6,7 @@ import { useUi } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { FavoriteButton, ModeSwitch, Scrubber, Transport, Volume } from "./Controls";
 import { IconButton } from "./IconButton";
+import { LyricsButton } from "./Lyrics";
 
 /** Desktop and tablet player: a floating island under the content. */
 export function PlayerBar() {
@@ -52,6 +53,7 @@ export function PlayerBar() {
 
         <div className="flex items-center justify-end gap-1">
           <ModeSwitch className="max-2xl:hidden" />
+          <LyricsButton />
           <IconButton
             label={t.player.queue}
             size="sm"
