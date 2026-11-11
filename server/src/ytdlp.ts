@@ -14,6 +14,8 @@ export interface StreamFormat {
   url: string;
   headers: Record<string, string>;
   mime: string;
+  /** Earliest time YouTube allows fetching this URL (ms). */
+  availableAt?: number;
 }
 
 export interface Resolved {
@@ -35,6 +37,7 @@ interface RawFormat {
   abr?: number;
   protocol?: string;
   http_headers?: Record<string, string>;
+  available_at?: number;
 }
 
 const RESOLVE_TIMEOUT_MS = 45_000;
@@ -111,7 +114,7 @@ const isHttps = (f: RawFormat) => !f.protocol || f.protocol === "https";
 
 function toStream(f: RawFormat, kind: "audio" | "video"): StreamFormat {
   const mime = kind === "audio" ? (f.ext === "webm" ? "audio/webm" : "audio/mp4") : "video/mp4";
-  return { formatId: f.format_id, url: f.url!, headers: f.http_headers ?? {}, mime };
+  return { formatId: f.format_id, url: f.url!, headers: f.http_headers ?? {}, mime, availableAt: (f.available_at ?? 0) * 1000 };
 }
 
 function pickAudio(formats: RawFormat[]): RawFormat | undefined {
@@ -139,29 +142,28 @@ function expiryOf(url: string): number {
 const cache = new Map<string, Promise<Resolved>>();
 const resolvedAt = new Map<string, Resolved>();
 
-// When yt-dlp fails, the clients to ask YouTube directly (see directAudio.ts), refreshed from the repository.
+// Clients for direct audio (see directAudio.ts), refreshed from the repository.
 // Read lazily: directAudio.ts and this module import each other through search.ts.
 let directClients: string[] | null = null;
 let directClientsAt = 0;
 
-async function clientsForDirect(): Promise<string[]> {
+function clientsForDirect(): string[] {
   if (Date.now() - directClientsAt > 6 * 3600_000) {
     directClientsAt = Date.now();
-    directClients = (await fetchRemoteClients()) ?? directClients;
+    // Refresh in the background so GitHub can't delay playback.
+    void fetchRemoteClients().then((clients) => { directClients = clients ?? directClients; });
   }
   return directClients ?? DEFAULT_CLIENTS;
 }
 
 /**
- * Plan B for audio: YouTube's bot check stops yt-dlp on some connections (VPNs, shared networks), and a YouTube
- * change can break it until it's updated. Asking YouTube for the audio directly often still works. Video stays
- * yt-dlp's job.
+ * Fast path for audio; also a fallback when yt-dlp fails to resolve video.
  */
-async function resolveDirect(id: string, ytdlpError: unknown): Promise<Resolved> {
+async function resolveDirect(id: string, ytdlpError?: unknown): Promise<Resolved> {
   // Removed, private or age-restricted videos won't play any other way either.
   if (ytdlpError instanceof HttpError && (ytdlpError.status === 403 || ytdlpError.status === 404)) throw ytdlpError;
   try {
-    const direct = await directAudio(id, await clientsForDirect());
+    const direct = await directAudio(id, clientsForDirect());
     return {
       id,
       title: direct.title,
@@ -169,18 +171,19 @@ async function resolveDirect(id: string, ytdlpError: unknown): Promise<Resolved>
       audio: { formatId: "direct", url: direct.url, headers: {}, mime: direct.mime },
       expiresAt: direct.expiresAt - 10 * 60_000,
     };
-  } catch {
-    throw ytdlpError; // yt-dlp's error says more, and may offer the update
+  } catch (err) {
+    throw ytdlpError ?? err; // Preserve yt-dlp's more useful error when it was tried first.
   }
 }
 
-export function resolveStreams(id: string): Promise<Resolved> {
-  const done = resolvedAt.get(id);
+export function resolveStreams(id: string, kind: "audio" | "video" = "video", ytdlpOnly = false): Promise<Resolved> {
+  const key = `${kind}:${id}`;
+  const done = resolvedAt.get(key);
   if (done && done.expiresAt > Date.now()) return Promise.resolve(done);
-  const inflight = cache.get(id);
+  const inflight = cache.get(key);
   if (inflight) return inflight;
 
-  const job = run(["-J", "--no-playlist", "--no-warnings", `https://www.youtube.com/watch?v=${id}`], RESOLVE_TIMEOUT_MS)
+  const extract = () => run(["-J", "--no-playlist", "--no-warnings", `https://www.youtube.com/watch?v=${id}`], RESOLVE_TIMEOUT_MS)
     .then((stdout): Resolved => {
       const info = JSON.parse(stdout) as { title: string; duration?: number; formats: RawFormat[] };
       const audio = pickAudio(info.formats);
@@ -194,20 +197,22 @@ export function resolveStreams(id: string): Promise<Resolved> {
         video: video ? toStream(video, "video") : undefined,
         expiresAt: expiryOf(audio.url!),
       };
-    })
-    .catch((err) => resolveDirect(id, err))
+    });
+  const job = (kind === "audio"
+    ? (ytdlpOnly ? extract() : resolveDirect(id).catch(extract))
+    : extract().catch((err) => resolveDirect(id, err)))
     .then((resolved) => {
-      resolvedAt.set(id, resolved);
+      resolvedAt.set(key, resolved);
       return resolved;
     })
-    .finally(() => cache.delete(id));
+    .finally(() => cache.delete(key));
 
-  cache.set(id, job);
+  cache.set(key, job);
   return job;
 }
 
-export function invalidate(id: string) {
-  resolvedAt.delete(id);
+export function invalidate(id: string, kind: "audio" | "video" = "video") {
+  resolvedAt.delete(`${kind}:${id}`);
 }
 
 const downloads = new Map<string, Promise<string>>();

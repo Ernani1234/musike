@@ -77,7 +77,7 @@ export interface MusikeApi {
   searchAlbums(q: string, signal?: AbortSignal): Promise<AlbumCard[]>;
   /** The music video matching a song, or null when YouTube has none. */
   videoFor(t: Track): Promise<Track | null>;
-  prepare(id: string, signal?: AbortSignal): Promise<Prepared>;
+  prepare(id: string, signal?: AbortSignal, kind?: "audio" | "video"): Promise<Prepared>;
 
   library(): Promise<Library>;
   addFavorite(t: Track): Promise<{ favorites: Track[] }>;

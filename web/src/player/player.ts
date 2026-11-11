@@ -244,11 +244,6 @@ export const usePlayer = create<PlayerState>((set, get) => {
     if (!track || recordedToken === token) return;
     recordedToken = token;
     useLibrary.getState().recordPlay(track);
-    // Warm up the next track (and, in Video mode, find and resolve its clip) so it starts quickly.
-    const upcoming = s.queue[s.index + 1];
-    if (!upcoming) return;
-    if (s.preferVideo) void lookupClip(upcoming).then((id) => api.prepare(id ?? upcoming.id).catch(() => {}));
-    else api.prepare(upcoming.id).catch(() => {});
   }
 
   function onEnded() {
@@ -558,6 +553,16 @@ export const usePlayer = create<PlayerState>((set, get) => {
 
 audio.volume = videoEl.volume = usePlayer.getState().volume;
 audio.muted = videoEl.muted = usePlayer.getState().muted;
+
+// Prepare the next track whenever the queue or playback mode changes, including a restored queue starting.
+usePlayer.subscribe((s, prev) => {
+  const upcoming = s.queue[s.index + 1];
+  if (!upcoming || (upcoming.id === prev.queue[prev.index + 1]?.id && s.preferVideo === prev.preferVideo &&
+    !(s.status === "playing" && prev.status !== "playing"))) return;
+  if (s.preferVideo && capabilities.video) {
+    void lookupClip(upcoming).then((id) => api.prepare(id ?? upcoming.id, undefined, id ? "video" : "audio").catch(() => {}));
+  } else api.prepare(upcoming.id).catch(() => {});
+});
 
 export const selectCurrent = (s: PlayerState): Track | null => s.queue[s.index] ?? null;
 

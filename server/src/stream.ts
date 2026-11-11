@@ -1,6 +1,7 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { msg } from "./i18n.js";
 import { HttpError } from "./types.js";
@@ -14,8 +15,8 @@ const PASS_HEADERS = ["content-length", "content-range", "accept-ranges", "last-
  */
 export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: string, kind: "audio" | "video") {
   const pick = async (fresh: boolean): Promise<StreamFormat> => {
-    if (fresh) invalidate(id);
-    const resolved = await resolveStreams(id);
+    if (fresh) invalidate(id, kind);
+    const resolved = await resolveStreams(id, kind, fresh && kind === "audio");
     const fmt = kind === "audio" ? resolved.audio : resolved.video;
     if (!fmt) throw new HttpError(404, msg("noSdVideo"));
     return fmt;
@@ -27,6 +28,9 @@ export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: 
   });
 
   const request = async (fmt: StreamFormat) => {
+    // yt-dlp's downloader honors this deadline; our proxy must do the same.
+    const wait = (fmt.availableAt ?? 0) - Date.now();
+    if (wait > 0) await sleep(wait, undefined, { signal: controller.signal });
     const headers: Record<string, string> = { ...fmt.headers };
     const range = req.headers.range;
     if (typeof range === "string") headers.Range = range;
