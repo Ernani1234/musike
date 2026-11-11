@@ -176,11 +176,25 @@ export const en = {
     startRadio: "Start radio from this track",
     upNext: "Up next",
     tabPlaying: "Playing",
+    tabLyrics: "Lyrics",
     tabQueue: "Queue",
     panel: "Now playing and queue",
     closePanel: "Close panel",
     backToPlayer: "Back to the player",
+    showLyrics: "Show lyrics",
     showQueue: "Show queue",
+  },
+
+  lyrics: {
+    notFound: "No lyrics found for this song",
+    notFoundHint: "They may be added to LRCLIB later — try again another time.",
+    instrumental: "This song is instrumental — there are no lyrics.",
+    unsynced: "These lyrics aren't synced to the song.",
+    loadFailed: "Couldn't load lyrics.",
+    offline: "You're offline. Lyrics need an internet connection.",
+    retry: "Try again",
+    backToLive: "Back to the current line",
+    providedBy: "Lyrics from LRCLIB",
   },
 
   queue: {

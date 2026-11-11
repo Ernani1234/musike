@@ -170,11 +170,25 @@ export const pt: Messages = {
     startRadio: "Iniciar rádio desta faixa",
     upNext: "A seguir",
     tabPlaying: "Tocando",
+    tabLyrics: "Letra",
     tabQueue: "Fila",
     panel: "Tocando agora e fila",
     closePanel: "Fechar painel",
     backToPlayer: "Voltar ao player",
+    showLyrics: "Ver letra",
     showQueue: "Ver fila",
+  },
+
+  lyrics: {
+    notFound: "Nenhuma letra encontrada para esta música",
+    notFoundHint: "Elas podem ser adicionadas ao LRCLIB depois — tente novamente mais tarde.",
+    instrumental: "Esta música é instrumental — não tem letra.",
+    unsynced: "Esta letra não é sincronizada com a música.",
+    loadFailed: "Não foi possível carregar a letra.",
+    offline: "Você está off-line. As letras precisam de internet.",
+    retry: "Tentar novamente",
+    backToLive: "Voltar para a linha atual",
+    providedBy: "Letras do LRCLIB",
   },
 
   queue: {

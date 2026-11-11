@@ -1,6 +1,7 @@
 import {
   CaretDownIcon,
   MagnifyingGlassIcon,
+  MicrophoneStageIcon,
   QueueIcon,
   RadioIcon,
   VideoCameraSlashIcon,
@@ -17,6 +18,7 @@ import { useUi, type PanelTab } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { FavoriteButton, ModeSwitch, Scrubber, Transport } from "./Controls";
 import { IconButton } from "./IconButton";
+import { LyricsView } from "./Lyrics";
 import { QueueList } from "./Queue";
 import { SLOT, VideoSlot } from "./Video";
 
@@ -94,6 +96,7 @@ function PanelBody({ tab, slot }: { tab: PanelTab; slot: number }) {
   const index = usePlayer((s) => s.index);
   const t = useT();
 
+  if (tab === "lyrics") return <LyricsView compact />;
   if (tab === "queue") return <QueueList />;
   if (!track) {
     return <p className="px-2 py-16 text-center text-sm text-fg-2">{t.nowPlaying.playSomething}</p>;
@@ -134,6 +137,7 @@ function PanelTabs({ tab, onTab }: { tab: PanelTab; onTab: (t: PanelTab) => void
       {(
         [
           ["playing", t.nowPlaying.tabPlaying],
+          ["lyrics", t.nowPlaying.tabLyrics],
           ["queue", t.nowPlaying.tabQueue],
         ] as const
       ).map(([id, label]) => (
@@ -232,7 +236,7 @@ export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () 
   const track = usePlayer(selectCurrent);
   const reduce = useReducedMotion();
   const drag = useDragControls();
-  const [view, setView] = useState<"player" | "queue">("player");
+  const [view, setView] = useState<"player" | "lyrics" | "queue">("player");
   const t = useT();
 
   return createPortal(
@@ -270,19 +274,37 @@ export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () 
                 <CaretDownIcon size={24} />
               </IconButton>
               <div className="mx-auto mt-0 h-1 w-10 rounded-full bg-fg-3/50" />
-              <IconButton
-                label={view === "queue" ? t.nowPlaying.backToPlayer : t.nowPlaying.showQueue}
-                active={view === "queue"}
-                onClick={() => setView(view === "queue" ? "player" : "queue")}
-                className="-mr-2"
-              >
-                <QueueIcon size={22} />
-              </IconButton>
+              <div className="flex items-center gap-1">
+                <IconButton
+                  label={view === "lyrics" ? t.nowPlaying.backToPlayer : t.nowPlaying.showLyrics}
+                  active={view === "lyrics"}
+                  onClick={() => setView(view === "lyrics" ? "player" : "lyrics")}
+                >
+                  <MicrophoneStageIcon size={22} />
+                </IconButton>
+                <IconButton
+                  label={view === "queue" ? t.nowPlaying.backToPlayer : t.nowPlaying.showQueue}
+                  active={view === "queue"}
+                  onClick={() => setView(view === "queue" ? "player" : "queue")}
+                  className="-mr-2"
+                >
+                  <QueueIcon size={22} />
+                </IconButton>
+              </div>
             </div>
 
             {view === "queue" ? (
               <div className="scroll-area -mx-3 flex-1 overflow-y-auto pb-6">
                 <QueueList />
+              </div>
+            ) : view === "lyrics" ? (
+              <div className="flex min-h-0 flex-1 flex-col gap-4 pb-[calc(16px+env(safe-area-inset-bottom))]">
+                <div className="min-h-0 flex-1">
+                  <LyricsView />
+                </div>
+                <Scrubber touch />
+                <Transport big />
+                <ModeSwitch className="justify-center" />
               </div>
             ) : (
               <div className="flex flex-1 flex-col justify-evenly gap-4 pb-[calc(16px+env(safe-area-inset-bottom))]">

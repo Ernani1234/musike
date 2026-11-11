@@ -238,3 +238,9 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Lyrics: fade the lines out at the top and bottom edges as they scroll past. */
+.lyrics-fade {
+  mask-image: linear-gradient(to bottom, transparent, black 10%, black 87%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 10%, black 87%, transparent);
+}
