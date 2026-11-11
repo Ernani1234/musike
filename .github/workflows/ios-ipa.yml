@@ -1,0 +1,29 @@
+# Builds only the unsigned iOS .ipa (same steps as the iOS job in release.yml) and attaches it as
+# an artifact. For testing a branch without spending minutes on the desktop and Android builds.
+# Run it from the Actions tab: "iOS IPA" → Run workflow → pick the branch.
+name: iOS IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Unsigned on purpose: AltStore, SideStore or Sideloadly signs it with the user's own Apple ID when installing.
+      - run: pnpm --filter @musike/mobile ipa
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios-ipa
+          path: release/*
+          if-no-files-found: error

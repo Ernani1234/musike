@@ -23,7 +23,7 @@ export interface TrackMenuState {
 }
 
 type Theme = "dark" | "light";
-export type PanelTab = "playing" | "queue";
+export type PanelTab = "playing" | "lyrics" | "queue";
 
 interface UiState {
   theme: Theme;
