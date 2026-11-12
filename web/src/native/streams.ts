@@ -48,7 +48,7 @@ void fetchRemoteClients(REMOTE_KEY).then((remote) => {
 async function resolveOnIos(id: string): Promise<DirectAudio | null> {
   if (!nativeResolverAvailable()) return null;
   try {
-    const r = await resolveNatively(id, getLang() === "pt-BR" ? "pt-BR" : "en", config.location);
+    const r = await resolveNatively(id, getLang(), config.location);
     if (r.error || !r.url) return null;
     const expire = Number(new URL(r.url).searchParams.get("expire")) * 1000;
     return {

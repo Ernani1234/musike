@@ -38,7 +38,7 @@ function Segmented<T extends string>({
           aria-checked={value === v}
           onClick={() => onChange(v)}
           className={cn(
-            "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition-colors duration-200",
+            "flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-full px-2.5 py-1.5 text-center text-[13px] font-medium leading-tight transition-colors duration-200",
             value === v ? "bg-surface-4 text-fg shadow-[inset_0_1px_0_var(--highlight)]" : "text-fg-2 hover:text-fg",
           )}
         >

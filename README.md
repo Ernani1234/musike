@@ -75,7 +75,7 @@ Musike started from the idea behind the old Discord music bots: a server that fe
 - **Backup to a file** to move everything to another Musike: merge or replace, with a preview before importing
 
 **Make it yours**
-- **English** and **Brazilian Portuguese**, switchable in Settings (per device). Server messages and the genre names and bios that come from YouTube Music follow the same language
+- **English**, **Brazilian Portuguese** and **Italian**, switchable in Settings (per device). Server messages and the genre names and bios that come from YouTube Music follow the same language
 - Dark and light themes, and **any accent color**: 8 presets or a custom one. Musike adjusts text shades so they stay readable in both themes
 - Show or hide panels: the Now Playing panel, playlists in the sidebar, a compact icons-only sidebar, the album column, the background texture, and each section of the Home page
 - Responsive from 320 px phones to ultrawide monitors; lock screen, headphone and media key controls (Media Session); picks up the queue where you left off
@@ -362,7 +362,7 @@ Server environment variables (all optional):
 
 ## API
 
-Every route answers JSON. Errors look like `{ "error": "message", "code"?: "tool_missing" | "maybe_outdated" | "bot_check" }`, with the message in the language of the `x-musike-lang` request header (`en` or `pt-BR`).
+Every route answers JSON. Errors look like `{ "error": "message", "code"?: "tool_missing" | "maybe_outdated" | "bot_check" }`, with the message in the language of the `x-musike-lang` request header (`en`, `pt-BR` or `it`).
 
 | Method | Route | Description |
 |---|---|---|
@@ -411,7 +411,7 @@ musike/
 │     ├─ player/        playback engine (audio, video, queue, Media Session)
 │     ├─ components/    player, panels, cinema mode, Settings, backup
 │     ├─ views/         Home, Search, Library, playlists, genres, artists, albums
-│     ├─ i18n/          English (the source) and Portuguese
+│     ├─ i18n/          English (the source), Portuguese and Italian
 │     ├─ native/        Android: server code running in the app, streams, media controls
 │     ├─ tv/            Android TV: remote (D-pad) navigation and the 10-foot interface
 │     └─ stores/        state (zustand), appearance preferences

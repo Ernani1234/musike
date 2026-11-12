@@ -53,9 +53,9 @@ interface WindowState {
 const stateFile = path.join(userData, "window.json");
 
 // The language picked in the web app, kept here so the splash screen (shown before the web app loads) uses it too.
-type Lang = "en" | "pt-BR";
+type Lang = "en" | "pt-BR" | "it";
 const settingsFile = path.join(userData, "settings.json");
-const isLang = (v: unknown): v is Lang => v === "en" || v === "pt-BR";
+const isLang = (v: unknown): v is Lang => v === "en" || v === "pt-BR" || v === "it";
 
 function readLang(): Lang {
   try {
