@@ -86,8 +86,8 @@ export function MiniPlayer() {
           <button
             type="button"
             onClick={toggle}
-            aria-label={status === "playing" ? t.common.pause : t.common.play}
-            className="grid size-11 shrink-0 place-items-center rounded-full text-fg active:scale-90"
+            aria-label={status === "loading" ? t.common.stopLoading : status === "playing" ? t.common.pause : t.common.play}
+            className="group/play grid size-11 shrink-0 place-items-center rounded-full text-fg active:scale-90"
           >
             <PlayPauseIcon size={24} />
           </button>

@@ -222,10 +222,12 @@ export const usePlayer = create<PlayerState>((set, get) => {
     const s = get();
     const last = s.queue[s.index];
     if (!last) return;
+    const mine = ++token;
     set({ status: "loading", statusText: "fetchingRadio" });
     try {
       const known = new Set(get().queue.map((t) => t.id));
       const more = (await api.radio(last.id)).filter((t) => !known.has(t.id)).slice(0, 25);
+      if (mine !== token) return;
       if (!more.length) throw new Error("empty");
       set((st) => ({
         queue: [...st.queue, ...more],
@@ -234,6 +236,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
       toast(getT().player.radioContinuing(last.title));
       load(get().index + 1);
     } catch {
+      if (mine !== token) return;
       set({ status: "paused", statusText: null, position: 0 });
     }
   }
@@ -468,6 +471,19 @@ export const usePlayer = create<PlayerState>((set, get) => {
       const s = get();
       const track = s.queue[s.index];
       if (!track) return;
+      if (s.status === "loading") {
+        token++; // Ignore pending stream, clip and radio results.
+        loaded = null;
+        pendingSeek = 0;
+        for (const media of [audio, videoEl]) {
+          media.pause();
+          media.removeAttribute("src");
+          media.load(); // Abort the media request immediately.
+        }
+        set({ status: "paused", statusText: null, buffered: 0 });
+        syncPlaybackState();
+        return;
+      }
       const kind = kindFor(track);
       const stale =
         !loaded ||
