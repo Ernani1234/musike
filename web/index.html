@@ -17,7 +17,7 @@
         if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
         // Before the app loads, so screen readers and the browser see the chosen language right away.
         var l = localStorage.getItem("musike:lang");
-        if (l === "en" || l === "pt-BR") document.documentElement.lang = l;
+        if (l === "en" || l === "pt-BR" || l === "vi") document.documentElement.lang = l;
         // Appearance chosen in Settings, applied before the first paint.
         var css = localStorage.getItem("musike:accent-css");
         if (css) {

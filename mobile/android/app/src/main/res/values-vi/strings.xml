@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!--
+  updated: 2026-11-12 12:05 | agent: opencode | change: XML declaration phai la dong 1 (SAXParseException khi comment dung truoc)
+-->
+<resources>
+    <string name="playback_channel">Phát nhạc</string>
+    <string name="playback_play">Phát</string>
+    <string name="playback_pause">Tạm dừng</string>
+    <string name="playback_next">Bài sau</string>
+    <string name="playback_previous">Bài trước</string>
+</resources>
