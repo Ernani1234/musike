@@ -17,7 +17,7 @@ import { useUi, type PanelTab } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { FavoriteButton, ModeSwitch, Scrubber, Transport } from "./Controls";
 import { IconButton } from "./IconButton";
-import { LyricsButton, LyricsView } from "./Lyrics";
+import { LyricsButton, LyricsView, useLyricsNavigation } from "./Lyrics";
 import { QueueList } from "./Queue";
 import { SLOT, VideoSlot } from "./Video";
 
@@ -88,6 +88,14 @@ function TrackHeading({ track, large = false }: { track: Track; large?: boolean 
   );
 }
 
+function usePanelTab(): { tab: PanelTab; showLyrics: boolean } {
+  const tab = useUi((s) => s.panelTab);
+  const { atLyrics } = useLyricsNavigation();
+  if (!atLyrics) return { tab, showLyrics: true };
+  // The lyrics already fill the middle column: repeating them here would just be a smaller copy.
+  return { tab: tab === "lyrics" ? "playing" : tab, showLyrics: false };
+}
+
 function PanelBody({ tab, slot }: { tab: PanelTab; slot: number }) {
   const track = usePlayer(selectCurrent);
   const startRadio = usePlayer((s) => s.startRadio);
@@ -129,17 +137,18 @@ function PanelBody({ tab, slot }: { tab: PanelTab; slot: number }) {
   );
 }
 
-function PanelTabs({ tab, onTab }: { tab: PanelTab; onTab: (t: PanelTab) => void }) {
+function PanelTabs({ tab, showLyrics, onTab }: { tab: PanelTab; showLyrics: boolean; onTab: (t: PanelTab) => void }) {
   const t = useT();
+  const tabs = [
+    ["playing", t.nowPlaying.tabPlaying],
+    ["lyrics", t.nowPlaying.tabLyrics],
+    ["queue", t.nowPlaying.tabQueue],
+  ] as const;
   return (
     <div role="tablist" className="flex gap-1">
-      {(
-        [
-          ["playing", t.nowPlaying.tabPlaying],
-          ["lyrics", t.nowPlaying.tabLyrics],
-          ["queue", t.nowPlaying.tabQueue],
-        ] as const
-      ).map(([id, label]) => (
+      {tabs
+        .filter(([id]) => showLyrics || id !== "lyrics")
+        .map(([id, label]) => (
         <button
           key={id}
           role="tab"
@@ -160,7 +169,7 @@ function PanelTabs({ tab, onTab }: { tab: PanelTab; onTab: (t: PanelTab) => void
 
 /** Docked right column (≥1280px). */
 export function SidePanel() {
-  const tab = useUi((s) => s.panelTab);
+  const { tab, showLyrics } = usePanelTab();
   const openPanel = useUi((s) => s.openPanel);
   const togglePanel = useUi((s) => s.togglePanel);
   const t = useT();
@@ -168,7 +177,7 @@ export function SidePanel() {
     <aside className="island hidden w-[360px] shrink-0 xl:flex" aria-label={t.nowPlaying.panel}>
       <div className="island-core flex w-full flex-col overflow-hidden">
         <div className="flex h-16 items-center justify-between px-3">
-          <PanelTabs tab={tab} onTab={openPanel} />
+          <PanelTabs tab={tab} showLyrics={showLyrics} onTab={openPanel} />
           <IconButton label={t.nowPlaying.closePanel} size="sm" onClick={() => togglePanel(tab)}>
             <XIcon size={18} />
           </IconButton>
@@ -184,7 +193,7 @@ export function SidePanel() {
 /** Same content as an overlay drawer for tablets and small laptops (768-1279px). */
 export function PanelDrawer() {
   const open = useUi((s) => s.drawerOpen);
-  const tab = useUi((s) => s.panelTab);
+  const { tab, showLyrics } = usePanelTab();
   const openPanel = useUi((s) => s.openPanel);
   const close = useUi((s) => s.closePanel);
   const reduce = useReducedMotion();
@@ -213,7 +222,7 @@ export function PanelDrawer() {
           >
             <div className="island-core flex w-full flex-col overflow-hidden">
               <div className="flex h-16 items-center justify-between px-3">
-                <PanelTabs tab={tab} onTab={openPanel} />
+                <PanelTabs tab={tab} showLyrics={showLyrics} onTab={openPanel} />
                 <IconButton label={t.common.close} size="sm" onClick={close}>
                   <XIcon size={18} />
                 </IconButton>
