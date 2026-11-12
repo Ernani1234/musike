@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } 
 import { AddToPlaylistDialog, ShortcutsDialog } from "./components/Dialogs";
 import { MiniPlayer, TabBar } from "./components/MobileChrome";
 import { NowPlayingSheet, PanelDrawer, SidePanel } from "./components/NowPlaying";
+import { LyricsPage } from "./components/Lyrics";
 import { PlayerBar } from "./components/PlayerBar";
 import { Rail } from "./components/Rail";
 import { TitleBar } from "./components/TitleBar";
@@ -128,6 +129,7 @@ export default function App() {
               <Route path="/search/genre/:id" element={<Genre />} />
               <Route path="/search/artist/:id" element={<Artist />} />
               <Route path="/search/album/:id" element={<Album />} />
+              <Route path={paths.lyrics} element={<LyricsPage />} />
               <Route path={paths.library} element={<Library />} />
               <Route path={paths.favorites} element={<Collection kind="favorites" />} />
               <Route path={paths.history} element={<Collection kind="history" />} />

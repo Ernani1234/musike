@@ -4,7 +4,7 @@ import { Readable } from "node:stream";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { msg } from "./i18n.js";
 import { HttpError } from "./types.js";
-import { invalidate, resolveStreams, type StreamFormat } from "./ytdlp.js";
+import { directAudioStream, invalidate, resolveStreams, type StreamFormat } from "./ytdlp.js";
 
 const PASS_HEADERS = ["content-length", "content-range", "accept-ranges", "last-modified"];
 
@@ -40,6 +40,15 @@ export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: 
     await upstream.body?.cancel();
     fmt = await pick(true);
     upstream = await request(fmt);
+  }
+  // Still refused: YouTube accepted the resolution but not the bytes. For audio, ask it directly instead.
+  if (kind === "audio" && (upstream.status === 403 || upstream.status === 410)) {
+    await upstream.body?.cancel();
+    const direct = await directAudioStream(id);
+    if (direct) {
+      fmt = direct;
+      upstream = await request(fmt);
+    }
   }
   if (!upstream.ok || !upstream.body) {
     throw new HttpError(502, msg("streamRefused", { status: upstream.status }), "maybe_outdated");
