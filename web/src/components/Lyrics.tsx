@@ -82,6 +82,12 @@ function lineAt(position: number, lines: LyricLine[]): number {
   return found;
 }
 
+/** How far into a line playback is, 0 to 1, read when the line is drawn (paused: no animation). */
+function lineFraction(line: LyricLine, length: number): number {
+  const into = usePlayer.getState().position - line.time;
+  return Math.max(0, Math.min(1, into / length));
+}
+
 /** The line being sung, re-rendered as playback moves (not the whole player). */
 function useActiveLine(lines: LyricLine[], synced: boolean): number {
   const [active, setActive] = useState(-1);
@@ -150,6 +156,7 @@ export function LyricsView({ mode = "panel", className }: { mode?: "panel" | "pa
   const track = usePlayer(selectCurrent);
   const { status, lyrics, reload } = useLyrics(track);
   const seek = usePlayer((s) => s.seek);
+  const playing = usePlayer((s) => s.status === "playing");
   const page = mode === "page";
 
   const lines = lyrics?.lines ?? NO_LINES;
@@ -206,6 +213,15 @@ export function LyricsView({ mode = "panel", className }: { mode?: "panel" | "pa
   useEffect(() => () => window.clearTimeout(idle.current), []);
 
   // Reading further down stops the follow; it returns by itself once the reader stops, or on a line click.
+  /** Clicking a line plays from it, like Spotify: a paused song comes back to life at that line. */
+  const jumpTo = (time: number) => {
+    pinned.current = true;
+    window.clearTimeout(idle.current);
+    seek(Math.max(0, time - 0.2));
+    const player = usePlayer.getState();
+    if (player.status === "paused" || player.status === "idle") player.toggle();
+  };
+
   const letGo = () => {
     pinned.current = false;
     window.clearTimeout(idle.current);
@@ -259,11 +275,7 @@ export function LyricsView({ mode = "panel", className }: { mode?: "panel" | "pa
                 }}
                 type="button"
                 aria-current={isActive ? "true" : undefined}
-                onClick={() => {
-                  pinned.current = true;
-                  window.clearTimeout(idle.current);
-                  seek(Math.max(0, line.time - 0.2));
-                }}
+                onClick={() => jumpTo(line.time)}
                 className={cn(
                   "relative block w-full rounded-lg text-left font-semibold transition-[color,opacity] duration-300",
                   page
@@ -274,17 +286,25 @@ export function LyricsView({ mode = "panel", className }: { mode?: "panel" | "pa
               >
                 <span className="relative inline-block max-w-full">
                   {line.text}
-                  {isActive && length > 0.4 && (
+                  {isActive &&
+                    length > 0.4 &&
                     // Fills under the line over its length, so it's clear how far into it playback is.
-                    <motion.span
-                      aria-hidden="true"
-                      key={`${line.time}-bar`}
-                      className="absolute inset-x-0 -bottom-0.5 h-0.5 origin-left rounded-full bg-accent/50"
-                      initial={{ scaleX: 0 }}
-                      animate={{ scaleX: 1 }}
-                      transition={{ duration: Math.min(length, 30), ease: "linear" }}
-                    />
-                  )}
+                    (playing ? (
+                      <motion.span
+                        aria-hidden="true"
+                        key={`${line.time}-bar`}
+                        className="absolute inset-x-0 -bottom-0.5 h-0.5 origin-left rounded-full bg-accent/50"
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: 1 }}
+                        transition={{ duration: Math.min(length, 30), ease: "linear" }}
+                      />
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="absolute inset-x-0 -bottom-0.5 h-0.5 origin-left rounded-full bg-accent/50"
+                        style={{ transform: `scaleX(${lineFraction(line, length)})` }}
+                      />
+                    ))}
                 </span>
               </button>
             );
