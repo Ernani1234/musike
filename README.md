@@ -59,7 +59,7 @@ Musike started from the idea behind the old Discord music bots: a server that fe
 - **Artists:** greatest hits, plus every album and single
 - **Albums:** open any album and play it in its original order, shuffle it, or save it as a playlist in one click
 - **Search a list:** type several songs separated by commas ("Bohemian Rhapsody, Hotel California, …"). Musike finds each one, picks the best match (you can swap it) and lets you play, favorite or send them all to a playlist
-- **Lyrics:** the mic button (or `Y`) opens the lyrics of the track being played in a centered panel, with the sung line highlighted and followed as the song goes; click a line to play from it. Timed lyrics come from [LRCLIB](https://lrclib.net)
+- **Lyrics:** the mic button (or `Y`) shows the lyrics of the track being played as a page in the middle of the app, with the sections and the player still around it; the sung line is highlighted and followed as the song goes, and clicking a line plays from it. Timed lyrics come from [LRCLIB](https://lrclib.net)
 - Queue with play next, shuffle and repeat (queue or track)
 - **Autoplay radio:** when the queue ends, it keeps going with similar songs
 - Instant seeking (HTTP Range streaming) and the next track preloaded

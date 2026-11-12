@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { paths } from "../lib/routes";
+import { useLyricsNavigation } from "../components/Lyrics";
 import { selectCurrent, usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { useUi } from "../stores/ui";
@@ -12,6 +13,7 @@ const isTyping = (el: EventTarget | null) =>
 /** Desktop keyboard shortcuts. Listed in the "?" dialog. */
 export function useShortcuts() {
   const navigate = useNavigate();
+  const lyrics = useLyricsNavigation();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -79,7 +81,7 @@ export function useShortcuts() {
           break;
         case "y":
         case "Y":
-          if (current) ui.setLyricsOpen(!ui.lyricsOpen);
+          if (current) lyrics.toggle();
           break;
         case "/":
           handled();
