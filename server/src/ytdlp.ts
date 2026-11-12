@@ -174,6 +174,29 @@ async function resolveDirect(id: string, ytdlpError: unknown): Promise<Resolved>
   }
 }
 
+/**
+ * Plan B for the player itself: YouTube can accept the resolution and still refuse the bytes (bot checks,
+ * VPNs), and then the cached yt-dlp URL keeps answering 403. Asking for the audio directly often works.
+ */
+export async function directAudioStream(id: string): Promise<StreamFormat | null> {
+  try {
+    const direct = await directAudio(id, await clientsForDirect());
+    const audio: StreamFormat = { formatId: "direct", url: direct.url, headers: {}, mime: direct.mime };
+    // Point the cache at the URL that works, so the next Range request doesn't go through this again.
+    const resolved = resolvedAt.get(id);
+    if (resolved) {
+      resolvedAt.set(id, {
+        ...resolved,
+        audio,
+        expiresAt: Math.min(resolved.expiresAt, direct.expiresAt - 10 * 60_000),
+      });
+    }
+    return audio;
+  } catch {
+    return null;
+  }
+}
+
 export function resolveStreams(id: string): Promise<Resolved> {
   const done = resolvedAt.get(id);
   if (done && done.expiresAt > Date.now()) return Promise.resolve(done);
