@@ -13,6 +13,7 @@ export const pt: Messages = {
     loading: "Carregando",
     play: "Tocar",
     pause: "Pausar",
+    stopLoading: "Parar carregamento",
     playX: (title) => `Tocar ${title}`,
     playAll: "Tocar tudo",
     favorite: "Favoritar",

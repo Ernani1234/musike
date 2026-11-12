@@ -27,7 +27,12 @@ import { Slider } from "./Slider";
 export function PlayPauseIcon({ size = 22 }: { size?: number }) {
   const status = usePlayer((s) => s.status);
   if (status === "loading") {
-    return <span className="block size-[18px] animate-spin rounded-full border-2 border-current border-t-transparent" />;
+    return (
+      <span className="relative block size-[18px]" aria-hidden="true">
+        <span className="absolute inset-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+        <span className="absolute inset-0 m-auto size-1.5 rounded-[1px] bg-current opacity-0 transition-opacity group-hover/play:opacity-100 group-focus-visible/play:opacity-100 [@media(hover:none)]:opacity-100" />
+      </span>
+    );
   }
   return status === "playing" ? <PauseIcon size={size} weight="fill" /> : <PlayIcon size={size} weight="fill" />;
 }
@@ -68,7 +73,8 @@ export function Transport({ big = false }: { big?: boolean }) {
         <SkipBackIcon size={iconSize} weight="fill" />
       </IconButton>
       <PlayDisc
-        label={p.status === "playing" ? t.common.pause : t.common.play}
+        label={p.status === "loading" ? t.common.stopLoading : p.status === "playing" ? t.common.pause : t.common.play}
+        className="group/play"
         px={big ? 72 : 40}
         onClick={p.toggle}
         disabled={!hasTrack}

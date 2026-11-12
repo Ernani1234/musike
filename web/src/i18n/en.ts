@@ -16,6 +16,7 @@ export const en = {
     loading: "Loading",
     play: "Play",
     pause: "Pause",
+    stopLoading: "Stop loading",
     playX: (title: string) => `Play ${title}`,
     playAll: "Play all",
     favorite: "Favorite",
