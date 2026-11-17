@@ -14,6 +14,8 @@ export interface StreamFormat {
   url: string;
   headers: Record<string, string>;
   mime: string;
+  /** YouTube answers 403 until this time (ms), a few seconds after resolving. */
+  availableAt?: number;
 }
 
 export interface Resolved {
@@ -35,6 +37,7 @@ interface RawFormat {
   abr?: number;
   protocol?: string;
   http_headers?: Record<string, string>;
+  available_at?: number;
 }
 
 const RESOLVE_TIMEOUT_MS = 45_000;
@@ -111,7 +114,8 @@ const isHttps = (f: RawFormat) => !f.protocol || f.protocol === "https";
 
 function toStream(f: RawFormat, kind: "audio" | "video"): StreamFormat {
   const mime = kind === "audio" ? (f.ext === "webm" ? "audio/webm" : "audio/mp4") : "video/mp4";
-  return { formatId: f.format_id, url: f.url!, headers: f.http_headers ?? {}, mime };
+  const availableAt = f.available_at ? f.available_at * 1000 : undefined;
+  return { formatId: f.format_id, url: f.url!, headers: f.http_headers ?? {}, mime, availableAt };
 }
 
 function pickAudio(formats: RawFormat[]): RawFormat | undefined {
