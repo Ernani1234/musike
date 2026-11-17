@@ -1,12 +1,33 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { msg } from "./i18n.js";
 import { HttpError } from "./types.js";
 import { invalidate, resolveStreams, type StreamFormat } from "./ytdlp.js";
 
 const PASS_HEADERS = ["content-length", "content-range", "accept-ranges", "last-modified"];
+
+/**
+ * A held-back URL answers 403 and then starts working, so a 403 is retried every half second: the track starts
+ * as soon as YouTube serves it. Resolving again sooner would only return a new URL that is held back just the same.
+ * A 403 is a tiny response on a kept-alive connection.
+ *
+ * yt-dlp's `available_at` isn't waited for as such: measured on a home connection, YouTube served the URL about
+ * 2 s before the time it gave, and it also holds back URLs it gives no time for. It only stretches how long the
+ * retries go on (past the usual 15 s, up to 60 s).
+ */
+const HOLD_POLL_MS = 500;
+const HOLD_MIN_MS = 15_000;
+const HOLD_MAX_MS = 60_000;
+
+/** Until when a 403 is retried on this URL. */
+function holdDeadline(fmt: StreamFormat): number {
+  const now = Date.now();
+  const announced = (fmt.availableAt ?? 0) + 5_000;
+  return Math.min(Math.max(now + HOLD_MIN_MS, announced), now + HOLD_MAX_MS);
+}
 
 /**
  * Proxies a googlevideo stream, forwarding Range so the browser can seek natively.
@@ -33,15 +54,32 @@ export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: 
     return fetch(fmt.url, { headers, signal: controller.signal });
   };
 
+  /** Requests the URL, retrying while YouTube answers 403 (held back). */
+  const fetchServed = async (fmt: StreamFormat) => {
+    const started = Date.now();
+    const deadline = holdDeadline(fmt);
+    let res = await request(fmt);
+    while (res.status === 403 && Date.now() < deadline) {
+      await res.body?.cancel();
+      await sleep(HOLD_POLL_MS, undefined, { signal: controller.signal });
+      res = await request(fmt);
+    }
+    if (res.ok && Date.now() - started > 1_000) {
+      req.log.info({ videoId: id, heldMs: Date.now() - started }, "YouTube held the stream back");
+    }
+    return res;
+  };
+
   let fmt = await pick(false);
-  let upstream = await request(fmt);
+  let upstream = await fetchServed(fmt);
   // Expired or rejected URL: resolve again once.
   if (upstream.status === 403 || upstream.status === 410) {
     await upstream.body?.cancel();
     fmt = await pick(true);
-    upstream = await request(fmt);
+    upstream = await fetchServed(fmt);
   }
   if (!upstream.ok || !upstream.body) {
+    req.log.warn({ videoId: id, kind, status: upstream.status, format: fmt.formatId }, "YouTube refused the stream");
     throw new HttpError(502, msg("streamRefused", { status: upstream.status }), "maybe_outdated");
   }
 
