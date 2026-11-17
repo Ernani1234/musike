@@ -215,6 +215,7 @@ export const en = {
     addToPlaylist: "Add to playlist",
     removeFromPlaylist: "Remove from this playlist",
     openYoutube: "Open on YouTube",
+    goToArtist: "Go to artist",
   },
 
   trackList: {
@@ -248,6 +249,7 @@ export const en = {
       "Search for a song, artist or album. For music videos and live performances, use the Videos tab. You can also paste a YouTube link.",
     exploreGenres: "Browse by genre",
     albums: "Albums",
+    artists: "Artists",
   },
 
   batch: {

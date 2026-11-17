@@ -12,6 +12,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { AlbumGrid } from "../components/AlbumTiles";
+import { ArtistGrid } from "../components/ArtistTiles";
 import { Artwork } from "../components/Artwork";
 import { GenrePanel } from "../components/GenrePanel";
 import { EmptyState, PageHeader } from "../components/Page";
@@ -21,7 +22,7 @@ import { api } from "../lib/api";
 import { useT } from "../i18n";
 import { cn } from "../lib/format";
 import { paths } from "../lib/routes";
-import type { AlbumCard, Track } from "../lib/types";
+import type { AlbumCard, ArtistCard, Track } from "../lib/types";
 import { usePlayer } from "../player/player";
 import { parseList } from "./BatchSearch";
 
@@ -55,8 +56,10 @@ function videoIdFromUrl(text: string): string | null {
   }
 }
 
-type Kind = "song" | "video" | "album";
-const KIND_PARAM: Record<Kind, string | null> = { song: null, video: "videos", album: "albums" };
+type Kind = "song" | "video" | "album" | "artist";
+const KIND_PARAM: Record<Kind, string | null> = { song: null, video: "videos", album: "albums", artist: "artists" };
+const kindOf = (param: string | null): Kind =>
+  (Object.keys(KIND_PARAM) as Kind[]).find((k) => KIND_PARAM[k] !== null && KIND_PARAM[k] === param) ?? "song";
 
 // The genre panel stays open when coming back from a genre page.
 let genresOpenMemo = false;
@@ -64,11 +67,12 @@ let genresOpenMemo = false;
 export default function Search() {
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
-  const kind: Kind = params.get("type") === "videos" ? "video" : params.get("type") === "albums" ? "album" : "song";
+  const kind = kindOf(params.get("type"));
   const t = useT();
   const [text, setText] = useState(q);
   const [results, setResults] = useState<Track[] | null>(null);
   const [albums, setAlbums] = useState<AlbumCard[] | null>(null);
+  const [artists, setArtists] = useState<ArtistCard[] | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [error, setError] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -111,15 +115,24 @@ export default function Search() {
     if (!q) {
       setResults(null);
       setAlbums(null);
+      setArtists(null);
       setState("idle");
       return;
     }
     const ctrl = new AbortController();
     setState("loading");
-    const found: Promise<number> =
+    // Only the list for the current tab is kept, so switching tabs never shows another tab's results.
+    const show = (next: { tracks?: Track[]; albums?: AlbumCard[]; artists?: ArtistCard[] }) => {
+      setResults(next.tracks ?? null);
+      setAlbums(next.albums ?? null);
+      setArtists(next.artists ?? null);
+    };
+    const found: Promise<unknown> =
       kind === "album"
-        ? api.searchAlbums(q, ctrl.signal).then((list) => (setAlbums(list), setResults(null), list.length))
-        : api.search(q, kind, ctrl.signal).then((list) => (setResults(list), setAlbums(null), list.length));
+        ? api.searchAlbums(q, ctrl.signal).then((list) => show({ albums: list }))
+        : kind === "artist"
+          ? api.searchArtists(q, ctrl.signal).then((list) => show({ artists: list }))
+          : api.search(q, kind, ctrl.signal).then((list) => show({ tracks: list }));
     found
       .then(() => {
         setState("ok");
@@ -183,7 +196,7 @@ export default function Search() {
       aria-selected={kind === k}
       onClick={() => setQuery(text || q, k)}
       className={cn(
-        "h-9 rounded-full px-4 text-sm font-medium transition-colors duration-200",
+        "h-9 shrink-0 rounded-full px-4 text-sm font-medium transition-colors duration-200",
         kind === k ? "bg-fg text-bg" : "bg-surface-3 text-fg-2 hover:text-fg",
       )}
     >
@@ -275,10 +288,11 @@ export default function Search() {
 
         {!linkId && (
           <div className="flex flex-wrap items-center gap-2">
-            <div role="tablist" aria-label={t.search.resultType} className="flex gap-2">
+            <div role="tablist" aria-label={t.search.resultType} className="no-scrollbar flex max-w-full gap-2 overflow-x-auto">
               {tab("song", t.search.songs)}
               {tab("video", t.search.videos)}
               {tab("album", t.search.albums)}
+              {tab("artist", t.search.artists)}
             </div>
             <span className="flex-1" />
             <div className="flex items-center gap-1">
@@ -358,6 +372,12 @@ export default function Search() {
 
         {!linkId && state === "ok" && albums && (albums.length ? (
           <AlbumGrid albums={albums} />
+        ) : (
+          <EmptyState icon={<MagnifyingGlassIcon size={28} />} title={t.search.nothingFound} body={t.search.nothingFoundBody(q, t.search.songs)} />
+        ))}
+
+        {!linkId && state === "ok" && artists && (artists.length ? (
+          <ArtistGrid artists={artists} />
         ) : (
           <EmptyState icon={<MagnifyingGlassIcon size={28} />} title={t.search.nothingFound} body={t.search.nothingFoundBody(q, t.search.songs)} />
         ))}

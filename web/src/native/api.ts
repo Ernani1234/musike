@@ -10,6 +10,7 @@ import {
   genreArtists,
   genres,
   searchAlbums,
+  searchArtists,
 } from "../../../server/src/browse";
 import { msg, tr, type MsgKey } from "../../../server/src/i18n";
 import * as library from "../../../server/src/library";
@@ -81,6 +82,7 @@ export const api: MusikeApi = {
       return albumPage(id, getLang());
     }, signal),
   searchAlbums: (q, signal) => call(() => searchAlbums(q.trim().slice(0, 200), getLang()), signal),
+  searchArtists: (q, signal) => call(() => searchArtists(q.trim().slice(0, 200), getLang()), signal),
   videoFor: (t) => call(() => findVideoFor(t.id, t.title, t.artist, t.duration)),
   prepare: (id, signal) =>
     call(async () => {

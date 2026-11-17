@@ -3,6 +3,8 @@ export interface Track {
   title: string;
   artist: string;
   album?: string;
+  /** YouTube Music channel of the main artist, when known: opens their artist page. */
+  artistId?: string;
   duration: number;
   thumb: string;
   art: string;
@@ -54,6 +56,16 @@ export interface AlbumCard {
   /** Empty on an artist's own page. */
   artist: string;
   year: string;
+  thumb: string;
+  art: string;
+}
+
+/** An artist as a search result. */
+export interface ArtistCard {
+  id: string;
+  name: string;
+  /** YouTube Music's own line, already in the app language: "Artist • 1.2M subscribers". */
+  info: string;
   thumb: string;
   art: string;
 }

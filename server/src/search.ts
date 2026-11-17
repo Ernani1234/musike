@@ -2,7 +2,7 @@ import { Innertube } from "youtubei.js";
 import { config } from "./config.js";
 import { msg, youtubeLang, type Lang } from "./i18n.js";
 import type { Track } from "./types.js";
-import { HttpError, VIDEO_ID } from "./types.js";
+import { ARTIST_ID, HttpError, VIDEO_ID } from "./types.js";
 import { ytdlpSearch } from "./ytdlp.js";
 
 // One session per language: YouTube Music words its own texts (genre names, artist bios) in the session's language.
@@ -48,6 +48,19 @@ function videoThumbs(id: string) {
 
 export const text = (v: unknown): string => (v == null ? "" : typeof v === "string" ? v : String((v as { toString(): string }).toString()));
 
+/**
+ * The first credited artist that has a YouTube Music artist page. Channels that aren't artist pages
+ * (labels, uploaders) are skipped, since opening them would fail.
+ */
+export function artistIdOf(credits: unknown): string | undefined {
+  for (const a of Array.isArray(credits) ? credits : []) {
+    const id = a?.channel_id ?? a?.endpoint?.payload?.browseId;
+    const pageType = a?.endpoint?.payload?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType;
+    if (typeof id === "string" && ARTIST_ID.test(id) && (!pageType || pageType === "MUSIC_PAGE_TYPE_ARTIST")) return id;
+  }
+  return undefined;
+}
+
 // youtubei.js node shapes differ between item types, so read them defensively.
 export function toTrack(item: any, kind: Track["kind"]): Track | null {
   const id: string | undefined = item.id ?? item.video_id;
@@ -63,6 +76,7 @@ export function toTrack(item: any, kind: Track["kind"]): Track | null {
     title: text(item.title) || text(item.name),
     artist,
     album: item.album?.name || undefined,
+    artistId: artistIdOf(item.artists ?? item.authors),
     duration: item.duration?.seconds ?? 0,
     ...images,
     kind: isSquare ? kind : "video",

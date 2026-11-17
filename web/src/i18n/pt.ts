@@ -209,6 +209,7 @@ export const pt: Messages = {
     addToPlaylist: "Adicionar à playlist",
     removeFromPlaylist: "Remover desta playlist",
     openYoutube: "Abrir no YouTube",
+    goToArtist: "Ir para o artista",
   },
 
   trackList: {
@@ -242,6 +243,7 @@ export const pt: Messages = {
       "Busque por música, artista ou álbum. Para clipes e ao vivo, use a aba Vídeos. Também dá para colar um link do YouTube.",
     exploreGenres: "Explorar por gênero",
     albums: "Álbuns",
+    artists: "Artistas",
   },
 
   batch: {

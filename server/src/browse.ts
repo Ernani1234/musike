@@ -1,8 +1,10 @@
 import type { Innertube } from "youtubei.js";
 import { isLang, msg, type Lang } from "./i18n.js";
-import { sized, text, toTrack, withClient } from "./search.js";
+import { artistIdOf, sized, text, toTrack, withClient } from "./search.js";
 import type { Track } from "./types.js";
-import { HttpError, VIDEO_ID } from "./types.js";
+import { ARTIST_ID, HttpError, VIDEO_ID } from "./types.js";
+
+export { ARTIST_ID };
 
 export interface Genre {
   /** YouTube Music's opaque "params" for the genre page. */
@@ -40,6 +42,16 @@ export interface AlbumCard {
   art: string;
 }
 
+/** An artist as a search result. */
+export interface ArtistCard {
+  id: string;
+  name: string;
+  /** YouTube Music's own line, in the request's language: "Artist • 1.2M subscribers". */
+  info: string;
+  thumb: string;
+  art: string;
+}
+
 export interface ArtistPage {
   id: string;
   name: string;
@@ -66,7 +78,6 @@ export interface AlbumPage {
 export const ALBUM_ID = /^MPRE[\w-]{6,60}$/;
 
 export const GENRE_ID = /^[\w-]{8,120}={0,2}$/;
-export const ARTIST_ID = /^UC[\w-]{22}$/;
 
 const MINUTE = 60_000;
 const ARTISTS_PAGE = 40;
@@ -373,6 +384,7 @@ const albumPage = cached(60 * MINUTE, async (key): Promise<AlbumPage> => {
         title: text(i.title) || "Untitled",
         artist: (i.artists ?? []).map((a: { name?: string }) => text(a?.name)).filter(Boolean).join(", ") || artist,
         album: title,
+        artistId: artistIdOf(i.artists) ?? artistId ?? undefined,
         duration: i.duration?.seconds ?? 0,
         thumb: sized(cover.art, 120),
         art: cover.art,
@@ -398,4 +410,23 @@ export const album = (id: string, lang: Lang) => albumPage(keyOf(lang, id));
 export async function searchAlbums(query: string, lang: Lang): Promise<AlbumCard[]> {
   const result: any = await withClient((yt) => yt.music.search(query, { type: "album" }), lang);
   return albumCards(itemsOf(result.contents?.[0]));
+}
+
+/** The artists in a search response, from every shelf, each once. */
+export function artistCards(result: any): ArtistCard[] {
+  const seen = new Set<string>();
+  const cards: ArtistCard[] = [];
+  for (const item of (Array.isArray(result?.contents) ? result.contents : []).flatMap(itemsOf)) {
+    const id = item?.id;
+    if (item?.item_type !== "artist" || typeof id !== "string" || !ARTIST_ID.test(id) || seen.has(id)) continue;
+    const name = text(item.name);
+    if (!name) continue;
+    seen.add(id);
+    cards.push({ id, name, info: text(item.subtitle), ...imagesOf(item) });
+  }
+  return cards;
+}
+
+export async function searchArtists(query: string, lang: Lang): Promise<ArtistCard[]> {
+  return artistCards(await withClient((yt) => yt.music.search(query, { type: "artist" }), lang));
 }
