@@ -4,7 +4,7 @@ import { Readable } from "node:stream";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { msg } from "./i18n.js";
 import { HttpError } from "./types.js";
-import { invalidate, resolveStreams, type StreamFormat } from "./ytdlp.js";
+import { invalidate, resolveAudio, resolveStreams, type StreamFormat } from "./ytdlp.js";
 
 const PASS_HEADERS = ["content-length", "content-range", "accept-ranges", "last-modified"];
 
@@ -14,6 +14,8 @@ const PASS_HEADERS = ["content-length", "content-range", "accept-ranges", "last-
  */
 export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: string, kind: "audio" | "video") {
   const pick = async (fresh: boolean): Promise<StreamFormat> => {
+    // First try: the quickest audio source configured. After a refusal: a fresh yt-dlp resolution.
+    if (kind === "audio" && !fresh) return resolveAudio(id);
     if (fresh) invalidate(id);
     const resolved = await resolveStreams(id);
     const fmt = kind === "audio" ? resolved.audio : resolved.video;

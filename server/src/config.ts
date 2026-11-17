@@ -11,6 +11,11 @@ export const config = {
   ytdlpPath: process.env.YTDLP_PATH || null,
   // Extra yt-dlp flags, e.g. YTDLP_EXTRA_ARGS="--cookies-from-browser firefox"
   ytdlpExtraArgs: (process.env.YTDLP_EXTRA_ARGS ?? "").split(" ").filter(Boolean),
+  /**
+   * MUSIKE_DIRECT_AUDIO=first: start audio from YouTube's API directly (in-process, about half a second, the way
+   * the Android app plays), and use yt-dlp only when that fails. By default yt-dlp comes first (a few seconds).
+   */
+  directAudioFirst: process.env.MUSIKE_DIRECT_AUDIO === "first",
   dataDir: process.env.MUSIKE_DATA_DIR ?? path.join(root, "data"),
   cacheDir: process.env.MUSIKE_CACHE_DIR ?? path.join(root, "cache"),
   /** HD video cache limit; least recently played videos are evicted first. */

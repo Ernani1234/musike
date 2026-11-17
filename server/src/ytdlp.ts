@@ -208,6 +208,32 @@ export function resolveStreams(id: string): Promise<Resolved> {
 
 export function invalidate(id: string) {
   resolvedAt.delete(id);
+  directResolved.delete(id);
+}
+
+const directResolved = new Map<string, StreamFormat & { expiresAt: number }>();
+
+/**
+ * The audio stream to play now. A full yt-dlp resolution already at hand (prefetched) is used as is. Otherwise,
+ * with MUSIKE_DIRECT_AUDIO=first, YouTube's API is asked directly: no yt-dlp process to start, and the VISIONOS
+ * client it uses isn't held back. yt-dlp remains the way when that fails, and for video.
+ */
+export async function resolveAudio(id: string): Promise<StreamFormat> {
+  const full = resolvedAt.get(id);
+  if (full && full.expiresAt > Date.now()) return full.audio;
+  if (config.directAudioFirst) {
+    const hit = directResolved.get(id);
+    if (hit && hit.expiresAt > Date.now()) return hit;
+    try {
+      const d = await directAudio(id, await clientsForDirect());
+      const fmt = { formatId: "direct", url: d.url, headers: {}, mime: d.mime, expiresAt: d.expiresAt - 10 * 60_000 };
+      directResolved.set(id, fmt);
+      return fmt;
+    } catch {
+      // yt-dlp below says more when it fails too
+    }
+  }
+  return (await resolveStreams(id)).audio;
 }
 
 const downloads = new Map<string, Promise<string>>();
