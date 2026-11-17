@@ -1,0 +1,28 @@
+# Musike PROD — music.example.com (Ernani1234/musike deployment)
+# Deploy: copy this file as docker-compose.yml into the instance folder
+# (e.g. <deploy-dir>/musike-prod/) next to ytdlp-wrap.sh, then: docker compose up -d
+# Changes vs upstream docker-compose.yml:
+#  - port bound to 127.0.0.1 only (reached via reverse proxy -> 4180)
+#  - ytdlp-wrap.sh (issue #28 workaround) bind-mounted read-only into /data
+#  - YTDLP_PATH / YTDLP_DELAY point Musike at the wrapper
+services:
+  musike-prod:
+    image: ghcr.io/ernani1234/musike:latest
+    container_name: musike-prod
+    ports:
+      - "127.0.0.1:4180:4180"
+    volumes:
+      - musike-data:/data
+      - musike-cache:/cache
+      - ./ytdlp-wrap.sh:/data/ytdlp-wrap.sh:ro
+    environment:
+      MUSIKE_DATA_DIR: /data
+      MUSIKE_CACHE_DIR: /cache
+      MUSIKE_CACHE_MAX_MB: "2048"
+      YTDLP_PATH: /data/ytdlp-wrap.sh
+      YTDLP_DELAY: "4"
+    restart: unless-stopped
+
+volumes:
+  musike-data:
+  musike-cache:
