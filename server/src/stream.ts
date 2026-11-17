@@ -30,6 +30,8 @@ export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: 
     const headers: Record<string, string> = { ...fmt.headers };
     const range = req.headers.range;
     if (typeof range === "string") headers.Range = range;
+    const wait = (fmt.availableAt ?? 0) - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, Math.min(wait, 15_000)));
     return fetch(fmt.url, { headers, signal: controller.signal });
   };
 
