@@ -238,17 +238,22 @@ export const usePlayer = create<PlayerState>((set, get) => {
     }
   }
 
+  /** Warms up the next track (and, in Video mode, finds and resolves its clip) so it starts quickly. */
+  function warmUpcoming() {
+    const s = get();
+    const upcoming = s.queue[s.index + 1];
+    if (!upcoming) return;
+    if (s.preferVideo) void lookupClip(upcoming).then((id) => api.prepare(id ?? upcoming.id).catch(() => {}));
+    else api.prepare(upcoming.id).catch(() => {});
+  }
+
   function onStarted() {
     const s = get();
     const track = s.queue[s.index];
     if (!track || recordedToken === token) return;
     recordedToken = token;
     useLibrary.getState().recordPlay(track);
-    // Warm up the next track (and, in Video mode, find and resolve its clip) so it starts quickly.
-    const upcoming = s.queue[s.index + 1];
-    if (!upcoming) return;
-    if (s.preferVideo) void lookupClip(upcoming).then((id) => api.prepare(id ?? upcoming.id).catch(() => {}));
-    else api.prepare(upcoming.id).catch(() => {});
+    warmUpcoming();
   }
 
   function onEnded() {
@@ -457,8 +462,20 @@ export const usePlayer = create<PlayerState>((set, get) => {
     startRadio: async (track) => {
       toast(getT().player.startingRadio(track.title));
       try {
-        const related = await api.radio(track.id);
-        get().playList([track, ...related.filter((t) => t.id !== track.id)], 0);
+        const related = (await api.radio(track.id)).filter((t) => t.id !== track.id);
+        const s = get();
+        const current = s.queue[s.index];
+        // Radio from the track that is on: it keeps going, uninterrupted, and the radio follows it.
+        if (current?.id === track.id && s.status !== "idle" && s.status !== "error") {
+          set({
+            queue: [current, ...(s.shuffle ? shuffled(related) : related)],
+            original: s.shuffle ? [current, ...related] : null,
+            index: 0,
+          });
+          warmUpcoming();
+          return;
+        }
+        get().playList([track, ...related], 0);
       } catch (e) {
         toast((e as Error).message, "error");
       }
