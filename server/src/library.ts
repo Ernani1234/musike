@@ -1,5 +1,5 @@
 import { msg } from "./i18n.js";
-import { HttpError, VIDEO_ID, type Library, type Playlist, type Track } from "./types.js";
+import { ARTIST_ID, HttpError, VIDEO_ID, type Library, type Playlist, type Track } from "./types.js";
 
 // No Node-only imports here: the Android app runs this same module, with its own storage.
 
@@ -53,6 +53,7 @@ export function sanitizeTrack(input: unknown): Track {
     title: str(t.title, 300) || "Untitled",
     artist: str(t.artist, 300),
     album: str(t.album, 300) || undefined,
+    artistId: ARTIST_ID.test(str(t.artistId, 30)) ? str(t.artistId, 30) : undefined,
     duration: typeof t.duration === "number" && Number.isFinite(t.duration) ? Math.max(0, Math.round(t.duration)) : 0,
     thumb: url(t.thumb),
     art: url(t.art),

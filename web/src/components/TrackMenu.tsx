@@ -2,6 +2,7 @@ import {
   ArrowSquareOutIcon,
   HeartIcon,
   ListPlusIcon,
+  MicrophoneStageIcon,
   PlayIcon,
   PlaylistIcon,
   QueueIcon,
@@ -11,9 +12,11 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router";
 import { MD, useMediaQuery } from "../hooks/useMediaQuery";
 import { useT } from "../i18n";
 import { cn } from "../lib/format";
+import { paths } from "../lib/routes";
 import { usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { useUi } from "../stores/ui";
@@ -45,6 +48,7 @@ export function TrackMenu() {
   const isMd = useMediaQuery(MD);
   const box = useRef<HTMLDivElement>(null);
   const t = useT();
+  const navigate = useNavigate();
   const [pos, setPos] = useState({ left: 0, top: 0 });
 
   useLayoutEffect(() => {
@@ -106,6 +110,18 @@ export function TrackMenu() {
         </Item>
       )}
       <div className="mx-3 my-1 h-px bg-line" />
+      {menu.track.artistId && (
+        <Item
+          icon={<MicrophoneStageIcon size={18} />}
+          onClick={run(() =>
+            navigate(paths.artist(menu.track.artistId!), {
+              state: menu.track.artist.includes(",") ? undefined : { name: menu.track.artist },
+            }),
+          )}
+        >
+          {t.trackMenu.goToArtist}
+        </Item>
+      )}
       <Item
         icon={<ArrowSquareOutIcon size={18} />}
         onClick={run(() => window.open(`https://www.youtube.com/watch?v=${menu.track.id}`, "_blank", "noopener"))}

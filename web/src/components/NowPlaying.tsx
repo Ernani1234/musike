@@ -14,6 +14,7 @@ import { cn } from "../lib/format";
 import type { Track } from "../lib/types";
 import { selectCurrent, usePlayer, useStatusText } from "../player/player";
 import { useUi, type PanelTab } from "../stores/ui";
+import { ArtistLink } from "./ArtistLink";
 import { Artwork } from "./Artwork";
 import { FavoriteButton, ModeSwitch, Scrubber, Transport } from "./Controls";
 import { IconButton } from "./IconButton";
@@ -79,7 +80,13 @@ function TrackHeading({ track, large = false }: { track: Track; large?: boolean 
       <div className="min-w-0 flex-1">
         <h2 className={cn("truncate font-semibold tracking-tight", large ? "text-[22px] leading-tight" : "text-lg")}>{track.title}</h2>
         <p className={cn("truncate", large ? "text-base" : "text-sm", status === "error" ? "text-danger" : "text-fg-2")}>
-          {statusText ?? [track.artist, track.album].filter(Boolean).join(" · ")}
+          {statusText ?? (
+            <>
+              {/* `large` is the phone sheet: the artist page replaces it in history, so Back doesn't reopen it. */}
+              <ArtistLink track={track} replace={large} />
+              {track.album && ` · ${track.album}`}
+            </>
+          )}
         </p>
       </div>
       <FavoriteButton track={track} size={large ? "lg" : "md"} />

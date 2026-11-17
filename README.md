@@ -368,6 +368,7 @@ Every route answers JSON. Errors look like `{ "error": "message", "code"?: "tool
 |---|---|---|
 | `GET` | `/api/search?q=&type=song\|video` | Search YouTube Music |
 | `GET` | `/api/search/albums?q=` | Search albums |
+| `GET` | `/api/search/artists?q=` | Search artists |
 | `GET` | `/api/suggest?q=` | Search suggestions |
 | `GET` | `/api/radio/:id` | Related tracks (radio) |
 | `GET` | `/api/genres` | YouTube Music genres |

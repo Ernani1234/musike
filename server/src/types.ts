@@ -3,6 +3,8 @@ export interface Track {
   title: string;
   artist: string;
   album?: string;
+  /** YouTube Music channel of the main artist, when known: opens their artist page. */
+  artistId?: string;
   duration: number;
   thumb: string;
   art: string;
@@ -26,6 +28,8 @@ export interface Library {
 import { tr, type Text } from "./i18n.js";
 
 export const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+/** A YouTube Music artist page (a channel ID). */
+export const ARTIST_ID = /^UC[\w-]{22}$/;
 
 /** Machine-readable reason so the web app can offer the right fix (e.g. "update yt-dlp"). */
 export type ErrorCode = "tool_missing" | "maybe_outdated" | "bot_check";
