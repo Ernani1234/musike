@@ -16,6 +16,9 @@ interface LibraryState extends Library {
   deletePlaylist: (id: string) => Promise<void>;
   addToPlaylist: (id: string, t: Track | Track[]) => Promise<void>;
   removeFromPlaylist: (id: string, trackId: string) => Promise<void>;
+  /** Many at once (picked in a list): one notice for all. */
+  removeFavorites: (ids: string[]) => Promise<void>;
+  removeManyFromPlaylist: (id: string, trackIds: string[]) => Promise<void>;
 }
 
 const replacePlaylist = (list: Playlist[], p: Playlist) => list.map((x) => (x.id === p.id ? p : x));
@@ -117,6 +120,36 @@ export const useLibrary = create<LibraryState>((set, get) => ({
       else toast(added ? t.toasts.addedManyTo(added, p.name) : t.toasts.allAlreadyIn(p.name));
     } catch (e) {
       toast((e as Error).message, "error");
+    }
+  },
+
+  removeFavorites: async (ids) => {
+    const prev = get().favorites;
+    const gone = new Set(ids);
+    set({ favorites: prev.filter((t) => !gone.has(t.id)) });
+    try {
+      let favorites = prev;
+      for (const id of ids) ({ favorites } = await api.removeFavorite(id));
+      set({ favorites });
+      toast(getT().toasts.removedFavorites(ids.length));
+    } catch (e) {
+      toast((e as Error).message, "error");
+      void get().load(); // some may be gone already: show what the server has
+    }
+  },
+
+  removeManyFromPlaylist: async (id, trackIds) => {
+    const prev = get().playlists;
+    const gone = new Set(trackIds);
+    set({ playlists: prev.map((p) => (p.id === id ? { ...p, tracks: p.tracks.filter((t) => !gone.has(t.id)) } : p)) });
+    try {
+      let last: Playlist | null = null;
+      for (const trackId of trackIds) last = await api.removeFromPlaylist(id, trackId);
+      if (last) set((s) => ({ playlists: replacePlaylist(s.playlists, last!) }));
+      toast(getT().toasts.removedFromPlaylist(trackIds.length));
+    } catch (e) {
+      toast((e as Error).message, "error");
+      void get().load();
     }
   },
 

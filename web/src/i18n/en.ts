@@ -207,6 +207,8 @@ export const en = {
   },
 
   trackMenu: {
+    select: "Select",
+    deselect: "Deselect",
     actionsFor: (title: string) => `Actions for ${title}`,
     playNow: "Play now",
     playNext: "Play next",
@@ -275,6 +277,7 @@ export const en = {
     all: "All",
     countShort: (n: number, total: number) => `${n} of ${total}`,
     count: (n: number, total: number) => `${n} of ${count(total, "song", "songs")}`,
+    remove: "Remove",
   },
 
   genre: {
@@ -423,6 +426,8 @@ export const en = {
     addedFavorites: (n: number) => `${n} tracks added to Favorites`,
     playlistCreated: (name: string) => `Playlist "${name}" created`,
     playlistDeleted: "Playlist deleted",
+    removedFavorites: (n: number) => `${count(n, "track", "tracks")} removed from Favorites`,
+    removedFromPlaylist: (n: number) => `${count(n, "track", "tracks")} removed from the playlist`,
     addedTo: (name: string) => `Added to "${name}"`,
     addedManyTo: (n: number, name: string) => `${n} tracks added to "${name}"`,
     allAlreadyIn: (name: string) => `They were all in "${name}" already`,

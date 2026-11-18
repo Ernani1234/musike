@@ -20,6 +20,8 @@ export interface TrackMenuState {
   x: number;
   y: number;
   playlistId?: string;
+  /** In a list you can pick tracks from: "Select" (or "Deselect") this one, which shows the checkboxes. */
+  select?: { selected: boolean; toggle: () => void };
 }
 
 type Theme = "dark" | "light";

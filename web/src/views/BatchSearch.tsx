@@ -212,6 +212,7 @@ export default function BatchSearch() {
 function EntryRow({ entry, index }: { entry: Entry; index: number }) {
   const update = useBatch((s) => s.update);
   const retry = useBatch((s) => s.retry);
+  const selecting = useBatch((s) => s.entries.some((e) => e.selected));
   const playTrack = usePlayer((s) => s.playTrack);
   const [open, setOpen] = useState(false);
   const track = entry.options[entry.pick];
@@ -257,6 +258,8 @@ function EntryRow({ entry, index }: { entry: Entry; index: number }) {
       <SelectableRow
         track={track}
         selected={entry.selected}
+        selecting={selecting}
+        checks
         onToggle={() => update(index, { selected: !entry.selected })}
         onPlay={() => playTrack(track)}
         note={<span className="text-fg-3">{t.batch.searched(entry.query)}</span>}

@@ -201,6 +201,8 @@ export const pt: Messages = {
   },
 
   trackMenu: {
+    select: "Selecionar",
+    deselect: "Desmarcar",
     actionsFor: (title) => `Ações para ${title}`,
     playNow: "Tocar agora",
     playNext: "Tocar a seguir",
@@ -269,6 +271,7 @@ export const pt: Messages = {
     all: "Todas",
     countShort: (n, total) => `${n} de ${total}`,
     count: (n, total) => `${n} de ${count(total, "música", "músicas")}`,
+    remove: "Remover",
   },
 
   genre: {
@@ -417,6 +420,8 @@ export const pt: Messages = {
     addedFavorites: (n) => `${n} faixas adicionadas às Favoritas`,
     playlistCreated: (name) => `Playlist "${name}" criada`,
     playlistDeleted: "Playlist excluída",
+    removedFavorites: (n) => `${n === 1 ? "1 faixa removida" : `${n} faixas removidas`} das Favoritas`,
+    removedFromPlaylist: (n) => `${n === 1 ? "1 faixa removida" : `${n} faixas removidas`} da playlist`,
     addedTo: (name) => `Adicionada a "${name}"`,
     addedManyTo: (n, name) => `${n} faixas adicionadas a "${name}"`,
     allAlreadyIn: (name) => `Já estavam todas em "${name}"`,
