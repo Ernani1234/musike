@@ -4,6 +4,9 @@
 
 # Musike
 
+> Fork WIP package (18 November 2026): configurable audio lookahead; optional invite-only WhatsApp accounts with per-user SQLite libraries; admin/ops; optional Google import and per-user daily top-ups. Auth is **off by default**. Read [deployment notes](DEPLOYMENT-NOTES.md), [database decision](DATABASE-DECISION.md), [architecture](ARCHITECTURE.md), [acceptance checks](ACCEPTANCE-CHECKLIST.md) and [test results](TEST-RESULTS.md). Apply source changes to fork main `85843fd`; preserve operator deployment files. Google albums/history are provider-dependent and must pass demo checks before acceptance.
+
+
 **Your music, uninterrupted.**
 
 A personal music player for YouTube's catalog: any song or music video, as **audio** or **video**, with no ads, no account and no subscription.
@@ -353,8 +356,8 @@ Server environment variables (all optional):
 | `HOST` | `0.0.0.0` | Use `127.0.0.1` to accept only this computer |
 | `YTDLP_PATH` | automatic | Forces a specific yt-dlp executable |
 | `YTDLP_EXTRA_ARGS` | | Extra flags, e.g. `--cookies-from-browser firefox` |
-| `MUSIKE_DATA_DIR` | `server/data` (`/data` in Docker) | Where `library.json` lives |
-| `MUSIKE_CACHE_DIR` | `server/cache` (`/cache` in Docker) | Downloaded HD videos |
+| `MUSIKE_DATA_DIR` | `server/data` (`/data` in Docker) | Shared JSON when auth off; account DB/secret when on |
+| `MUSIKE_CACHE_DIR` | `server/cache` (`/cache` in Docker) | Shared audio/HD cache and working files |
 | `MUSIKE_CACHE_MAX_MB` | `2048` | Video cache limit (least recently played go first) |
 | `MUSIKE_BIN_DIR` | | Private tools folder (the desktop app uses `%APPDATA%\Musike\bin`) |
 | `MUSIKE_LANG` | `en` | YouTube Music language when a request doesn't say (the app always sends the chosen language) |

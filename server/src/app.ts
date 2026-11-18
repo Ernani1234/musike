@@ -14,6 +14,13 @@ import { presentJob, startJob, systemInfo, type Channel } from "./system.js";
 import { refreshTools, type Tools } from "./tools.js";
 import { HttpError, VIDEO_ID } from "./types.js";
 import { downloadHd, pruneCache, resolveStreams, shutdownMedia } from "./ytdlp.js";
+import { GoogleImport, registerGoogle, type GoogleOptions } from "./googleImport.js";
+import { registerAdmin } from "./adminRoutes.js";
+import { registerAccounts } from "./accountRoutes.js";
+import { Accounts, type AccountOptions } from "./accounts.js";
+import { trustedProxies } from "./proxy.js";
+import { AudioCache } from "./audioCache.js";
+import { acquireFileLease } from "./cacheBudget.js";
 
 function videoId(params: unknown): string {
   const id = (params as { id?: string }).id ?? "";
@@ -41,26 +48,53 @@ export interface RunningServer {
 }
 
 /** Builds API and static routes without opening a socket, for startup and injection tests. */
-export async function createApp() {
+export async function createApp(options: AccountOptions & { trustProxy?: string; google?: GoogleOptions } = {}) {
   library.useLibraryStorage(fileStorage());
-  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "warn" } });
+  const proxy = trustedProxies(options.trustProxy);
+  const app = Fastify({ trustProxy: proxy.trust, logger: { level: process.env.LOG_LEVEL ?? "warn", serializers: { req: (request: { method?: string; url?: string; ip?: string }) => ({ method: request.method, path: request.url?.split("?")[0], ip: request.ip }) } } });
+  const audioCache = new AudioCache(undefined, undefined, (message) => app.log.debug(message));
+  let accounts: Accounts | null = null;
+  let google: GoogleImport | null = null;
+  app.addHook("onClose", async () => { await google?.close(); await audioCache.close(); await accounts?.close(); });
 
   app.setErrorHandler((err, req, reply) => {
     const e = err as Error & { statusCode?: number };
     const status = e instanceof HttpError ? e.status : e.statusCode ?? 500;
-    if (status >= 500) app.log.error(e);
+    if (status >= 500) {
+      app.log.error({ event: "request.error", status, path: req.routeOptions.url, ip: req.realClientIp });
+      if (accounts) void accounts.audit(req.musikeUser?.id ?? null, "request.error", req.routeOptions.url ?? null, req.realClientIp, "error").catch(() => {});
+    }
     // Musike's own errors are translated into the language the app asked for.
-    const error = e instanceof HttpError ? tr(langOf(req), e.text) : e.message;
+    const error = accounts && status >= 500 && !(e instanceof HttpError) ? "Request failed" : e instanceof HttpError ? tr(langOf(req), e.text) : e.message;
     if (!reply.sent) reply.code(status).send({ error, code: e instanceof HttpError ? e.code : undefined });
   });
+
+  try {
+  accounts = await registerAccounts(app, options, proxy);
+  await registerAdmin(app, accounts);
+  google = accounts ? new GoogleImport(accounts, options.google) : null;
+  registerGoogle(app, google); await google?.recover(); google?.schedule();
+  } catch (error) { await app.close(); throw error; }
+  const userLibrary = (req: import("fastify").FastifyRequest) => accounts && req.musikeUser ? accounts.library(req.musikeUser.id) : library;
+
+  app.addHook("onSend", async (req, reply, payload) => { if (req.url.startsWith("/api/")) reply.header("cache-control", "no-store"); return payload; });
 
   app.get("/api/health", async () => ({ ok: true }));
 
   // System: yt-dlp status and one-click update
 
-  app.get("/api/system", (req) => systemInfo(langOf(req)));
+  app.get("/api/system", async (req) => {
+    if (accounts && req.musikeUser?.role !== "admin") throw Object.assign(new Error("Administrator access required"), { statusCode: 403 });
+    if (accounts) {
+      await accounts.audit(req.musikeUser!.id, "admin.system.read", null, req.realClientIp);
+      app.log.child({ component: "audit" }, { level: "info" }).info({ event: "admin_action", actor: req.musikeUser!.id, action: "system.read", ip: req.realClientIp });
+    }
+    return systemInfo(langOf(req));
+  });
 
   app.post("/api/system/ytdlp", async (req) => {
+    if (accounts && req.musikeUser?.role !== "admin") throw Object.assign(new Error("Administrator access required"), { statusCode: 403 });
+    if (accounts) { await accounts.audit(req.musikeUser!.id, "admin.ytdlp.update", null, req.realClientIp); app.log.child({ component: "audit" }, { level: "info" }).info({ event: "admin_action", actor: req.musikeUser!.id, action: "ytdlp.update", ip: req.realClientIp }); }
     const { channel } = (req.body ?? {}) as { channel?: string };
     return presentJob(startJob((channel === "nightly" ? "nightly" : "stable") satisfies Channel), langOf(req));
   });
@@ -125,6 +159,16 @@ export async function createApp() {
   });
 
   // Playback
+  app.get("/api/playback/settings", async () => ({ lookahead: config.lookahead, audioQuality: config.audioQuality, videoQuality: config.videoQuality }));
+  app.post("/api/queue/prepare", { schema: { body: {
+    type: "object", required: ["clientId", "currentId", "upcomingIds"], additionalProperties: false,
+    properties: { revision: { type: "integer", minimum: 0, maximum: 9007199254740991 }, clientId: { type: "string", pattern: "^[a-zA-Z0-9_-]{8,80}$" }, currentId: { type: "string", pattern: "^[a-zA-Z0-9_-]{11}$" },
+      upcomingIds: { type: "array", maxItems: 100, items: { type: "string", pattern: "^[a-zA-Z0-9_-]{11}$" } } },
+  } } }, async (req) => {
+    const body = req.body as { clientId: string; currentId: string; upcomingIds: string[]; revision?: number };
+    audioCache.update(`${req.musikeUser?.id ?? "legacy"}:${body.clientId}`, body.currentId, body.upcomingIds, config.lookahead, body.revision);
+    return { accepted: true, lookahead: config.lookahead };
+  });
 
   /** Resolves stream URLs ahead of time so the next track starts instantly. */
   app.post("/api/prepare/:id", async (req) => {
@@ -132,10 +176,22 @@ export async function createApp() {
     return { id: r.id, title: r.title, duration: r.duration, hasSdVideo: !!r.video };
   });
 
-  app.get("/api/stream/:id/audio", (req, reply) => proxyStream(req, reply, videoId(req.params), "audio"));
+  app.get("/api/stream/:id/audio", async (req, reply) => {
+    const id = videoId(req.params);
+    const release = await acquireFileLease(path.join(config.cacheDir, `${id}.audio.bin`));
+    reply.raw.once("close", release); reply.raw.once("finish", release);
+    const cached = await audioCache.find(id);
+    if (cached) {
+      return serveFile(req, reply, cached.file, cached.mime);
+    }
+    release();
+    return proxyStream(req, reply, id, "audio");
+  });
 
   app.get("/api/stream/:id/video", async (req, reply) => {
     const id = videoId(req.params);
+    const release = await acquireFileLease(path.join(config.cacheDir, `${id}.720.mp4`));
+    reply.raw.once("close", release); reply.raw.once("finish", release);
     const { q } = req.query as { q?: string };
     if (q === "hd") return serveFile(req, reply, await downloadHd(id), "video/mp4");
     const resolved = await resolveStreams(id);
@@ -145,7 +201,7 @@ export async function createApp() {
 
   // Library
 
-  app.get("/api/library", () => library.getLibrary());
+  app.get("/api/library", (req) => userLibrary(req).getLibrary());
 
   app.get("/api/library/tracks", {
     schema: { querystring: {
@@ -164,7 +220,7 @@ export async function createApp() {
     const { kind, pid = "", offset, limit, q } = req.query as {
       kind: "favorites" | "history" | "playlist"; pid?: string; offset: number; limit: number; q: string;
     };
-    return library.getTrackPage(kind, pid, offset, limit, q);
+    return userLibrary(req).getTrackPage(kind, pid, offset, limit, q);
   });
 
   /** Restores a backup file exported by any Musike instance. Big libraries need more than the 1 MB default body. */
@@ -175,40 +231,40 @@ export async function createApp() {
     if (typeof backup.version !== "number" || backup.version > 1) {
       throw new HttpError(400, msg("newerBackup"));
     }
-    return library.importLibrary(backup.library, body.mode === "replace" ? "replace" : "merge");
+    return userLibrary(req).importLibrary(backup.library, body.mode === "replace" ? "replace" : "merge");
   });
 
   app.put("/api/favorites/:id", async (req) => {
     const track = library.sanitizeTrack(req.body);
     if (track.id !== videoId(req.params)) throw new HttpError(400, msg("idMismatch"));
-    return { favorites: await library.addFavorite(track) };
+    return { favorites: await userLibrary(req).addFavorite(track) };
   });
 
   /** Bulk add, e.g. from the list search. */
   app.post("/api/favorites", async (req) => {
     const { tracks } = (req.body ?? {}) as { tracks?: unknown };
     if (!Array.isArray(tracks)) throw new HttpError(400, msg("tracksRequired"));
-    return { favorites: await library.addFavorites(tracks.slice(0, 500).map(library.sanitizeTrack)) };
+    return { favorites: await userLibrary(req).addFavorites(tracks.slice(0, 500).map(library.sanitizeTrack)) };
   });
 
-  app.delete("/api/favorites/:id", async (req) => ({ favorites: await library.removeFavorite(videoId(req.params)) }));
+  app.delete("/api/favorites/:id", async (req) => ({ favorites: await userLibrary(req).removeFavorite(videoId(req.params)) }));
 
-  app.post("/api/history", async (req) => ({ history: await library.pushHistory(library.sanitizeTrack(req.body)) }));
+  app.post("/api/history", async (req) => ({ history: await userLibrary(req).pushHistory(library.sanitizeTrack(req.body)) }));
 
   app.post("/api/playlists", async (req) => {
     const body = (req.body ?? {}) as { name?: unknown; tracks?: unknown };
     const tracks = Array.isArray(body.tracks) ? body.tracks.slice(0, 500).map(library.sanitizeTrack) : [];
-    return library.createPlaylist(typeof body.name === "string" ? body.name : "", tracks);
+    return userLibrary(req).createPlaylist(typeof body.name === "string" ? body.name : "", tracks);
   });
 
   app.patch("/api/playlists/:pid", async (req) => {
     const { pid } = req.params as { pid: string };
     const { name } = (req.body ?? {}) as { name?: unknown };
-    return library.renamePlaylist(pid, typeof name === "string" ? name : "");
+    return userLibrary(req).renamePlaylist(pid, typeof name === "string" ? name : "");
   });
 
   app.delete("/api/playlists/:pid", async (req, reply) => {
-    await library.deletePlaylist((req.params as { pid: string }).pid);
+    await userLibrary(req).deletePlaylist((req.params as { pid: string }).pid);
     return reply.code(204).send();
   });
 
@@ -216,11 +272,11 @@ export async function createApp() {
   app.post("/api/playlists/:pid/tracks", async (req) => {
     const body = (req.body ?? {}) as { tracks?: unknown };
     const tracks = Array.isArray(body.tracks) ? body.tracks.slice(0, 500).map(library.sanitizeTrack) : library.sanitizeTrack(req.body);
-    return library.addToPlaylist((req.params as { pid: string }).pid, tracks);
+    return userLibrary(req).addToPlaylist((req.params as { pid: string }).pid, tracks);
   });
 
   app.delete("/api/playlists/:pid/tracks/:id", async (req) =>
-    library.removeFromPlaylist((req.params as { pid: string }).pid, videoId(req.params)),
+    userLibrary(req).removeFromPlaylist((req.params as { pid: string }).pid, videoId(req.params)),
   );
 
   // Web app (production build)

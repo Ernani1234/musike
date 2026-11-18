@@ -5,6 +5,9 @@ import path from "node:path";
 const root = typeof import.meta.url === "string" ? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..") : process.cwd();
 
 export const config = {
+  audioQuality: (process.env.MUSIKE_AUDIO_QUALITY === "high" ? "high" : "standard") as "standard" | "high",
+  videoQuality: (process.env.MUSIKE_VIDEO_QUALITY === "hd" ? "hd" : "sd") as "sd" | "hd",
+  lookahead: Math.max(0, Math.min(10, Math.floor(Number(process.env.MUSIKE_LOOKAHEAD ?? 3) || 0))),
   port: Number(process.env.PORT ?? 4180),
   host: process.env.HOST ?? "0.0.0.0",
   /** Explicit yt-dlp executable. When unset it is located automatically (see tools.ts). */
@@ -13,7 +16,7 @@ export const config = {
   ytdlpExtraArgs: (process.env.YTDLP_EXTRA_ARGS ?? "").split(" ").filter(Boolean),
   dataDir: process.env.MUSIKE_DATA_DIR ?? path.join(root, "data"),
   cacheDir: process.env.MUSIKE_CACHE_DIR ?? path.join(root, "cache"),
-  /** HD video cache limit; least recently played videos are evicted first. */
+  /** Shared media cache budget; unneeded/farthest queue entries are evicted first. */
   cacheMaxBytes: Number(process.env.MUSIKE_CACHE_MAX_MB ?? 2048) * 1024 * 1024,
   webDist: process.env.MUSIKE_WEB_DIST ?? path.resolve(root, "..", "web", "dist"),
   /**

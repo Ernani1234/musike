@@ -19,6 +19,7 @@ import { getT } from "./i18n";
 import { capabilities } from "./lib/api";
 import { cn } from "./lib/format";
 import { legacyRedirect, NOW_PLAYING_HASH, paths } from "./lib/routes";
+import { useSession } from "./stores/session";
 import { usePlayer } from "./player/player";
 import { useLibrary } from "./stores/library";
 import { openSettings, useSystem } from "./stores/system";
@@ -35,6 +36,7 @@ const Search = lazy(() => import("./views/Search"));
 const SHEET_HASH = `#${NOW_PLAYING_HASH}`;
 
 export default function App() {
+  const session = useSession();
   const location = useLocation();
   const legacy = legacyRedirect(location.pathname, location.search, location.hash);
   const navigate = useNavigate();
@@ -54,7 +56,7 @@ export default function App() {
 
   // Check yt-dlp shortly after start and say so once if something needs doing (not on Android: no yt-dlp there).
   useEffect(() => {
-    if (!capabilities.engineSettings) return;
+    if (!capabilities.engineSettings || (session.enabled && session.user?.role !== "admin")) return;
     const t = setTimeout(async () => {
       await loadSystem();
       const info = useSystem.getState().info;

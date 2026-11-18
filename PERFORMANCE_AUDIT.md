@@ -1,5 +1,8 @@
 # Musike Performance & Structural Audit
 
+> Historical audit of the earlier fork refactor, retained as evidence. Its pre-account/no-SQLite findings and old test/bundle counts describe that baseline. The four-phase update below and ARCHITECTURE.md/TEST-RESULTS.md describe the current package.
+
+
 Updated 18 November 2026 after both implementation passes. Source: the uploaded Musike 1.5.1 ZIP, archive comment 41706772a4c1e774e3bf1731ca28711fa1529cf4. ARCHITECTURE.md describes the delivered source. No current upstream GitHub comparison or deployment was performed.
 
 ## Actual stack and audit boundary
@@ -162,3 +165,24 @@ Headless Chromium was attempted, but the environment denied its process-singleto
 4. On staging, test large collections, page-two playback and select-all, rapid favorite edits, backup merge/replace, SD/HD seeking, Back/Forward, custom accents, TV focus and device media controls.
 5. Review the documented residual limits and capture production response bytes, p50/p95 latency, event-loop delay, memory and React commits before choosing a storage migration or further bundle/windowing work.
 6. Roll out with the prior source/data backup available for rollback. Nothing was published or deployed by this task.
+
+
+## Four-phase follow-up — 18 November 2026
+
+| Bottleneck / structural risk | Concrete current implementation |
+| --- | --- |
+| prepare only warmed stream metadata; direct fallback still resolved at the switch | AudioCache prepares both candidate paths concurrently, consumes a successful complete body immediately and publishes ID.audio.bin + validated metadata. Warm stream route uses serveFile/Range, avoiding resolver and wrapper work at advance. |
+| Radio was fetched after ending | player.primeRadio fills the tail when remaining tracks fall below the server depth, shares one seed request, and discards stale/manual replacements. Queue edits and active heartbeats renew the same lookahead window. |
+| Skip/download accumulation and near-needed eviction | Abortable bounded byte queue, same-ID shared jobs, monotonic client revisions, rank-based shared media reservations and active file leases. Stable budget-blocked windows stop rather than repeatedly re-download. Already-shared metadata resolution keeps its bounded deadline. |
+| SQL/auth could block requests or cross user boundaries | Worker-only SQLite RPC, parameterized indexed phone/session/owner queries and per-user createLibrary instances; no synchronous DB calls in Fastify handlers. Auth off/native retain existing JSON. |
+| Import could issue one mapping query and snapshot write for every item | One owner mapping query per run, in-run resolution memo, grouped durable library writes and batched mapping upserts. History uses the existing 60-item model. |
+| Large report UI could add thousands of DOM rows | Existing useListPage/ListPager limits the new per-item report to 100 mounted rows. The full bounded report remains in the per-user DB/API. |
+| Account bootstrap/session could initialize private modules early | AuthGate waits before lazy App/private store loading, user-specific player keys and observed-401 media shutdown. Google callback requires the originating account. |
+| Shared proxy IP collapses limits/presence | Explicit trustProxy IP/CIDR configuration, no trust default and a shared verified CF/XFF/socket resolver, covered by the proxy matrix. |
+| Unbounded operational history | Audit retains 1,000 rows; ops returns 50 latest events/50 errors/100 clients. Import retains 20 reports per user; transient OTP/session cleanup runs with login requests. |
+
+New endpoint execution is detailed in ARCHITECTURE.md: account requests use short asynchronous RPC/provider operations; admin settings/users/presence use bounded queries and snapshots; import creation returns 202 and runs in a two-slot background queue with per-user deduplication. No N+1 owner mapping query is used in the import item loop. Source playlist fetching still requires provider calls per collection; full libraries remain JSON snapshots, so SQL title search and fully incremental track updates are not claimed.
+
+No CSS token or framework replacement was needed. All new app panels are React components using existing semantic utilities, shared buttons/paging and typed i18n. Existing dark/light/TV style scopes remain the source of truth. Hosted iOS media now stays in the WebView for authenticated same-origin cookies; standalone direct media retains its native bridge.
+
+Remaining limits: cache accounting cannot impose a hard disk quota on existing external HD/FFmpeg merges or evict leased/current files; full-library JSON parse/serialization still costs CPU; upstream public discovery requests retain earlier timeout limits; private Music albums/history require live provider acceptance; no real latency/visual/device/load benchmark was performed. The execution order and rollback instructions are in IMPLEMENTATION-PLAN.md and DEPLOYMENT-NOTES.md.

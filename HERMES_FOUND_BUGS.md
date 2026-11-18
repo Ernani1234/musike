@@ -53,3 +53,13 @@ The URL is issued by yt-dlp once, but the actual fetch happens later, when the c
 - Without the workaround, yt-dlp-sourced playback is effectively broken for any fetch slower than ~3 s.
 - The wrapper adds a fixed `YTDLP_DELAY` delay per resolve — negligible in practice for interactive playback.
 - Remove the wrapper and the `YTDLP_PATH`/`YTDLP_DELAY` env once upstream fixes #28.
+
+---
+
+## Implementation follow-up — BUG-001 — 2026-11-18 WIP source overlay
+
+The preceding field report and its deployed wrapper mitigation are retained unchanged. No operator wrapper, YTDLP_PATH, YTDLP_DELAY, compose or environment file was changed by this package.
+
+Phase 1 now resolves primary and direct fallback candidates ahead of playback, fetches a successful full audio body into the shared cache, and serves warm audio using the same local-file Range path as cached media. The first ready successful candidate can be used without waiting for the other wrapper/direct lookup. Queue priority, active leases, budget reservations and stale-window cancellation address eviction and skip races. Radio is filled before the queue tail; playlist/manual/optimistic changes all renew preparation.
+
+Regression evidence: fixtures cover primary refusal followed by fallback byte capture, a later warm hit without resolution, first-ready direct preparation while primary is pending, exact HTTP 206 bytes from the audio cache, budget/lease behavior and rapid-skip/out-of-order cancellation. These verify warm-path behavior, not production YouTube's token semantics or a measured end-to-end playback latency. The pre-existing cold proxy still retries rejected URLs once. Actual wrapper timing, cold primary/direct fallback and device latency remain demo checks in ACCEPTANCE-CHECKLIST.md; BUG-001 remains operationally mitigated, not asserted fully resolved upstream.

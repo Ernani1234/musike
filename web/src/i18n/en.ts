@@ -6,6 +6,21 @@
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export const en = {
+  features: {
+    login: "Sign in to Musike", inviteOnly: "Private instance. An administrator invitation is required.",
+    phone: "Phone number", invite: "Invite code (first login only)", remember: "Remember me for 30 days",
+    otp: "WhatsApp login code", sendCode: "Send code", verify: "Sign in", resend: "Resend code", changePhone: "Change phone number",
+    connectionFailed: "Could not reach the server. Reload to try again.", deliveryUncertain: "Delivery could not be confirmed. If a code arrived, enter it; wait before resending.",
+    account: "Account", logout: "Sign out", admin: "Instance administration", users: "Users", server: "Server and media", otpSettings: "Login and OTP",
+    ops: "Operations", save: "Save", refresh: "Refresh", inviteCreate: "Create invite", name: "Name", role: "Role", status: "Status", user: "User", administrator: "Administrator",
+    approved: "Approved", pending: "Pending", disabled: "Disabled", lastSeen: "Last activity", ip: "Client IP", connected: "Connected clients", errors: "Recent errors",
+    cacheBudget: "Cache budget (MB)", lookahead: "Upcoming audio tracks to cache", audioQuality: "Audio quality default", videoQuality: "Video quality default",
+    standard: "Standard", high: "High", sd: "SD", hd: "HD", arguments: "yt-dlp arguments (JSON array)", otpEnabled: "Enable OTP delivery", expiry: "Code lifetime (seconds)", cooldown: "Resend cooldown (seconds)",
+    google: "YouTube Music import", connectGoogle: "Connect Google for import", disconnectGoogle: "Disconnect Google", importNow: "Import now", dailySync: "Daily auto-sync (opt in)",
+    importing: "Import in progress", origin: "Imported from YouTube Music", albumOrigin: "YouTube Music album", playlistOrigin: "YouTube Music playlist",
+    importReport: "Import report", imported: "Imported", already: "Already present", notFound: "Not found", unavailable: "Unavailable", googleNotConnected: "Google is not connected",
+  },
+
   locale: "en-US",
 
   common: {

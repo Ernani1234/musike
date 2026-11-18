@@ -6,14 +6,16 @@ export class QueueError extends Error {
 export class TaskQueue {
   private active = 0;
   private closed = false;
-  private waiting: { start: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }[] = [];
+  private waiting: { cleanup: () => void; start: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }[] = [];
   constructor(private concurrency: number, private capacity: number, private waitMs: number) {}
 
-  run<T>(work: () => Promise<T>): Promise<T> {
+  run<T>(work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
     if (this.closed) return Promise.reject(new QueueError("closed"));
     if (this.active >= this.concurrency && this.waiting.length >= this.capacity) return Promise.reject(new QueueError("full"));
     return new Promise<T>((resolve, reject) => {
       const start = () => {
+        signal?.removeEventListener("abort", cancel);
         this.active++;
         Promise.resolve().then(work).then(resolve, reject).finally(() => {
           this.active--;
@@ -21,17 +23,24 @@ export class TaskQueue {
           if (next) { clearTimeout(next.timer); next.start(); }
         });
       };
+      const cancel = () => {
+        const i = this.waiting.findIndex((entry) => entry.start === start);
+        if (i >= 0) { clearTimeout(this.waiting[i]!.timer); this.waiting.splice(i, 1); }
+        reject(new DOMException("Aborted", "AbortError"));
+      };
       if (this.active < this.concurrency) return start();
-      const item = { start, reject, timer: setTimeout(() => {
+      const item = { cleanup: () => signal?.removeEventListener("abort", cancel), start, reject, timer: setTimeout(() => {
         this.waiting = this.waiting.filter((entry) => entry !== item);
+        signal?.removeEventListener("abort", cancel);
         reject(new QueueError("timeout"));
       }, this.waitMs) };
       this.waiting.push(item);
+      signal?.addEventListener("abort", cancel, { once: true });
     });
   }
 
   close() {
     this.closed = true;
-    for (const item of this.waiting.splice(0)) { clearTimeout(item.timer); item.reject(new QueueError("closed")); }
+    for (const item of this.waiting.splice(0)) { clearTimeout(item.timer); item.cleanup(); item.reject(new QueueError("closed")); }
   }
 }

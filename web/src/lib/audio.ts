@@ -207,7 +207,9 @@ class NativeAudio extends EventTarget {
 
 /** The audio element for this platform: native on iOS, a real `<audio>` everywhere else. */
 export function createAudio(): HTMLAudioElement {
-  if (!nativeBridge) {
+  // Hosted streams are same-origin Musike URLs: let WebKit attach its HttpOnly session cookies.
+  // The standalone bridge is only needed for direct YouTube streams, whose cookies it never receives.
+  if (!nativeBridge || location.protocol === "https:" || location.protocol === "http:") {
     const audio = new Audio();
     audio.preload = "auto";
     return audio;

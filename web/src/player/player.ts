@@ -5,6 +5,7 @@ import { createAudio } from "../lib/audio";
 import { shuffled } from "../lib/format";
 import type { Track } from "../lib/types";
 import { playerWriter, type SavedPlayer as Saved } from "../lib/playerPersistence";
+import { upcomingTracks } from "../lib/playbackQueue";
 import { SessionCache } from "../lib/sessionCache";
 import { useLibrary } from "../stores/library";
 import { openSettings } from "../stores/system";
@@ -61,6 +62,8 @@ interface PlayerState {
   setPreferVideo: (on: boolean) => void;
   setQuality: (q: Quality) => void;
   setAutoRadio: (on: boolean) => void;
+  warmUpcoming: () => void;
+  stopSession: () => void;
 }
 
 // Media elements live outside React so playback survives any re-render or route change.
@@ -79,8 +82,11 @@ let loaded: { id: string; kind: Kind; quality: Quality } | null = null;
 let pendingSeek = 0;
 let token = 0;
 let recordedToken = -1;
+let sessionLost = false;
+let lookahead = 3;
+let qualityChanged = false;
 
-const STORAGE_KEY = "musike:player";
+const STORAGE_KEY = `musike:player${sessionStorage.getItem("musike:user") ? `:${sessionStorage.getItem("musike:user")}` : ""}`;
 
 function readSaved(): Partial<Saved> {
   try {
@@ -141,6 +147,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
   }
 
   function load(index: number, opts: { autoplay?: boolean; startAt?: number } = {}) {
+    if (sessionLost) return;
+    manualRadio?.abort();
     const s = get();
     const track = s.queue[index];
     if (!track) return;
@@ -206,24 +214,50 @@ export const usePlayer = create<PlayerState>((set, get) => {
     setMetadata(track);
   }
 
-  async function continueWithRadio() {
+  let radioJob: { queue: Track[]; controller: AbortController; promise: Promise<void> } | null = null;
+  let radioAttempt: { queue: Track[]; at: number } | null = null;
+  let manualRadio: AbortController | null = null;
+
+  function primeRadio(force = false): Promise<void> {
     const s = get();
-    const last = s.queue[s.index];
-    if (!last) return;
+    if (radioJob && radioJob.queue !== s.queue) { radioJob.controller.abort(); radioJob = null; }
+    if (!s.autoRadio || s.repeat !== "off" || sessionLost) { radioJob?.controller.abort(); return Promise.resolve(); }
+    if (radioJob) return radioJob.promise;
+    if (!force && (lookahead === 0 || s.queue.length - s.index - 1 >= lookahead)) return Promise.resolve();
+    if (radioAttempt?.queue === s.queue && Date.now() - radioAttempt.at < 30_000) return Promise.resolve();
+    const tail = s.queue.at(-1); if (!tail) return Promise.resolve();
+    const queue = s.queue; const controller = new AbortController();
+    radioAttempt = { queue, at: Date.now() };
+    const promise = api.radio(tail.id, controller.signal).then((tracks) => {
+      if (controller.signal.aborted || sessionLost || get().queue !== queue || !get().autoRadio || get().repeat !== "off") return;
+      const known = new Set(queue.map((track) => track.id));
+      const more = tracks.filter((track) => { if (known.has(track.id)) return false; known.add(track.id); return true; }).slice(0, 25);
+      if (more.length) set((state) => ({ queue: [...queue, ...more], original: state.original ? [...state.original, ...more] : null }));
+    }).catch(() => {}).finally(() => { if (radioJob?.controller === controller) radioJob = null; });
+    radioJob = { queue, controller, promise }; return promise;
+  }
+
+  async function continueWithRadio() {
+    const index = get().index; const mine = token;
     set({ status: "loading", statusText: "fetchingRadio" });
-    try {
-      const known = new Set(get().queue.map((t) => t.id));
-      const more = (await api.radio(last.id)).filter((t) => !known.has(t.id)).slice(0, 25);
-      if (!more.length) throw new Error("empty");
-      set((st) => ({
-        queue: [...st.queue, ...more],
-        original: st.original ? [...st.original, ...more] : null,
-      }));
-      toast(getT().player.radioContinuing(last.title));
-      load(get().index + 1);
-    } catch {
-      set({ status: "paused", statusText: null, position: 0 });
-    }
+    await primeRadio(true);
+    if (mine !== token || sessionLost) return;
+    if (get().queue[index + 1]) { load(index + 1); return; }
+    set({ status: "paused", statusText: null, position: 0 });
+  }
+
+  function warmQueue() {
+    const s = get();
+    if (radioJob && (radioJob.queue !== s.queue || !s.autoRadio || s.repeat !== "off")) { radioJob.controller.abort(); radioJob = null; }
+    const current = s.queue[s.index];
+    if (sessionLost || !current || (s.status !== "playing" && s.status !== "loading")) return;
+    const upcoming = upcomingTracks(s.queue, s.index, 10, s.repeat);
+    if (api.prefetch) void api.prefetch(current.id, upcoming.map((track) => track.id)).then((result) => {
+      if (result && result.lookahead !== lookahead) { lookahead = result.lookahead; void primeRadio(); }
+    }).catch(() => {});
+    else for (const track of upcoming.slice(0, 3)) void api.prepare(track.id).catch(() => {});
+    void primeRadio();
+    if (s.preferVideo && upcoming[0]) void lookupClip(upcoming[0]).then((id) => api.prepare(id ?? upcoming[0]!.id).catch(() => {}));
   }
 
   function onStarted() {
@@ -232,11 +266,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     if (!track || recordedToken === token) return;
     recordedToken = token;
     useLibrary.getState().recordPlay(track);
-    // Warm up the next track (and, in Video mode, find and resolve its clip) so it starts quickly.
-    const upcoming = s.queue[s.index + 1];
-    if (!upcoming) return;
-    if (s.preferVideo) void lookupClip(upcoming).then((id) => api.prepare(id ?? upcoming.id).catch(() => {}));
-    else api.prepare(upcoming.id).catch(() => {});
+    warmQueue();
   }
 
   function onEnded() {
@@ -443,12 +473,14 @@ export const usePlayer = create<PlayerState>((set, get) => {
     },
 
     startRadio: async (track) => {
+      manualRadio?.abort(); const controller = new AbortController(); manualRadio = controller; const mine = token;
       toast(getT().player.startingRadio(track.title));
       try {
-        const related = await api.radio(track.id);
+        const related = await api.radio(track.id, controller.signal);
+        if (controller.signal.aborted || mine !== token || sessionLost) return;
         get().playList([track, ...related.filter((t) => t.id !== track.id)], 0);
       } catch (e) {
-        toast((e as Error).message, "error");
+        if (!controller.signal.aborted) toast((e as Error).message, "error");
       }
     },
 
@@ -536,11 +568,20 @@ export const usePlayer = create<PlayerState>((set, get) => {
     },
 
     setQuality: (quality) => {
+      qualityChanged = true;
       set({ quality });
       reloadIfKindChanged();
     },
 
     setAutoRadio: (autoRadio) => set({ autoRadio }),
+    warmUpcoming: warmQueue,
+    stopSession: () => {
+      radioJob?.controller.abort(); manualRadio?.abort(); token++; loaded = null;
+      for (const media of [audio, videoEl]) { media.pause(); media.removeAttribute("src"); media.load(); }
+      set({ queue: [], original: null, index: 0, status: "idle", statusText: null, position: 0, duration: 0, buffered: 0 });
+      systemMedia?.setState({ playing: false, position: 0, duration: 0 });
+      if ("mediaSession" in navigator) { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = "none"; }
+    },
   };
 });
 
@@ -555,6 +596,7 @@ export const selectCurrent = (s: PlayerState): Track | null => s.queue[s.index] 
 
 const writePlayer = playerWriter({ setItem: (key, value) => localStorage.setItem(key, value) }, STORAGE_KEY);
 function persist() {
+  if (sessionLost) return;
   try {
     writePlayer(usePlayer.getState());
   } catch {
@@ -562,6 +604,21 @@ function persist() {
   }
 }
 setInterval(persist, 4000);
+// Queue edits (including optimistic/manual additions) refresh look-ahead without waiting for another playing event.
+usePlayer.subscribe((state, previous) => {
+  if (state.queue !== previous.queue || state.index !== previous.index || state.autoRadio !== previous.autoRadio || state.repeat !== previous.repeat)
+    queueMicrotask(() => usePlayer.getState().warmUpcoming());
+});
+setInterval(() => { if (usePlayer.getState().status === "playing") usePlayer.getState().warmUpcoming(); }, 30_000);
+if (api.playbackSettings) void api.playbackSettings().then((settings) => {
+  lookahead = settings.lookahead;
+  if (saved.quality === undefined && !qualityChanged && !sessionLost) usePlayer.setState({ quality: settings.videoQuality });
+  usePlayer.getState().warmUpcoming();
+}).catch(() => {});
+addEventListener("musike:unauthorized", () => {
+  if (sessionLost) return;
+  persist(); sessionLost = true; usePlayer.getState().stopSession();
+});
 addEventListener("pagehide", persist);
 document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && persist());
 

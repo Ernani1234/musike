@@ -74,7 +74,7 @@ export default function Library() {
             name={p.name}
             kind="playlist"
             tracks={p.tracks}
-            sub={t.library.playlistSub(p.tracks.length)}
+            sub={`${t.library.playlistSub(p.tracks.length)}${p.origin ? ` · ${p.origin.kind === "album" ? t.features.albumOrigin : t.features.playlistOrigin}` : ""}`}
           />
         ))}
       </ul>

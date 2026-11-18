@@ -81,6 +81,7 @@ export default function Collection({ kind }: Props) {
           />
           <div className="flex min-w-0 flex-col items-center gap-2 text-center md:items-start md:text-left">
             <span className="hidden text-xs font-medium text-fg-2 md:block">{label}</span>
+            {playlist?.origin && <span className="text-xs text-fg-2">{playlist.origin.kind === "album" ? t.features.albumOrigin : t.features.playlistOrigin}</span>}
             <h1 className="max-w-full text-[28px] leading-[1.1] font-bold tracking-tight break-words md:text-5xl lg:text-6xl">{name}</h1>
             <p className="font-mono text-[13px] text-fg-2">
               {t.common.tracks(tracks.length)}

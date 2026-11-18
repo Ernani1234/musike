@@ -1,8 +1,10 @@
-import type { Messages } from "./en";
+import { en, type Messages } from "./en";
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export const pt: Messages = {
+  features: en.features, // New instance features currently use the English catalog.
+
   locale: "pt-BR",
 
   common: {

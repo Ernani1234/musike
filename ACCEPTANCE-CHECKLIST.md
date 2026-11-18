@@ -1,0 +1,55 @@
+# Acceptance checklist — WIP demo package
+
+Checked boxes below refer to automated fixtures/build checks performed for this package. Unchecked boxes require the operator's demo, external provider or physical device. They are not implied successes.
+
+## Phase 1 — Queue pre-caching
+
+- [x] Primary refusal falls back to complete cached audio bytes; warm hits do not re-resolve URLs.
+- [x] Direct candidate is usable while a primary wrapper resolution remains pending.
+- [x] Warm HTTP audio serves exact local-file Range bytes without upstream work.
+- [x] Shared audio/HD usage accounting, active leases, budget stop/no-thrash and rapid-skip cancellation fixtures pass.
+- [x] Server lookahead is validated/persisted; older queue-window revisions cannot replace newer skips.
+- [x] Pure ordered/manual/repeat-all window regression passes; web/native/desktop code compiles.
+- [ ] Measure warm primary and direct-fallback playlist/radio advances against the same local-file baseline on demo; record browser timings and audible gaps.
+- [ ] Exercise real radio tail filling, optimistic queue insertion/removal, shuffle/repeat, rapid skips and concurrent clients under the deployed cache budget/wrapper.
+- [ ] Verify cold-path 403 behavior and keep/remove the existing wrapper only from measured evidence. This package does not certify BUG-001's upstream cause is fixed.
+
+## Phase 2 — Accounts, OTP and migration
+
+- [x] Migration backup/exact original preservation/idempotent restart and malformed-source failure pass.
+- [x] ADMIN_PHONE first-login bootstrap, invite-only creation, per-user isolation and single-use codes pass.
+- [x] Cooldown, expiry, attempt cap, concurrent resolved-IP request limit and wasphere contract/no automatic 408/5xx retry pass with injected providers.
+- [x] Secure cookie issuance, access refresh, server logout, disabled-user revocation, last-admin guard and API login wall/CSRF pass.
+- [x] Auth-off legacy library/static/media tests remain green.
+- [ ] A real wasphere OTP arrives for the configured admin; migrated data appears; an invited second account starts empty; uninvited phone receives no message.
+- [ ] Verify actual HTTPS cookie/remember-me expiry/logout, backup/restore and failure recovery on the NAS volume.
+- [ ] Run bundled promotion/revocation against demo and confirm access from a separate browser; ensure last admin cannot be removed.
+- [ ] Verify hosted Android/iOS/TV cookie login, session-loss media stop and background playback. Standalone local mode remains independent.
+
+## Phase 3 — Admin and ops
+
+- [x] Non-admin APIs return 403 for settings/users/ops/system controls; settings validate and survive app restart.
+- [x] Two distinct authenticated clients appear in ops; disabling a user removes their session/presence.
+- [x] Direct/unconfigured, trusted XFF, trusted CF and untrusted-spoof cases attribute expected IPs in both presence and audit.
+- [x] Admin actions emit IP-attributed structured logs and retained audit rows; sensitive request queries/headers are not serialized.
+- [ ] Confirm all four panels are absent for a non-admin; exercise edits in dark/light themes and narrow/TV layouts.
+- [ ] Open a second real browser, confirm the live count within seconds, and verify actual tunnel client IPs instead of the Docker bridge address.
+- [ ] Verify persisted cache/lookahead/quality/arguments and OTP controls on restart; inspect server logs for audit attribution without credentials.
+
+## Phase 4 — Google import
+
+- [x] Fixture OAuth state single use, PKCE scope, owner-bound callback and encrypted stored tokens pass.
+- [x] Ordered playlists, album-origin playlists, likes and latest-history fixture imports report per item and rerun without duplicates/resolution work.
+- [x] A second user's import never changes the first user's library; refresh credentials survive reopen/restart.
+- [x] Unavailable categories return partial reports; matching rejects an arbitrary wrong-artist search result.
+- [x] Daily sync is off by default, per-user opt-in/opt-out is enforced and disconnect revokes/deletes credentials in fixtures.
+- [ ] Configure Google Cloud test users/client/HTTPS redirect and perform real consent, refresh and revocation. Never copy actual tokens into acceptance evidence.
+- [ ] Import a small real library and verify all four categories actually granted by the provider. Albums/history use private Music APIs and may be refused; public API fallback covers playlists/likes only. Record unavailable categories as unresolved acceptance, not empty successful imports.
+- [ ] Verify idempotent manual top-ups, imported-origin UI labels, restored/edited collections and independent second-user consent/import on demo.
+- [ ] Opt in only one demo user, advance/wait for the real daily schedule and confirm no other account syncs. Google may reject embedded WebView consent; use a regular browser for connection.
+
+## Delivery/build scope
+
+- [x] Full suite, TypeScript checks and web/PWA, native-mode, server and Electron bundles pass; see TEST-RESULTS.md for exact results.
+- [x] ZIP is a changed/new-file source overlay; operator-owned .env, compose and deployment files, credentials, dependencies, caches/DBs and generated bundles are excluded.
+- [ ] Build/run the actual Docker image and native installers with the operator pipeline and verify architecture-specific Node/device behavior. No production deployment was performed here.

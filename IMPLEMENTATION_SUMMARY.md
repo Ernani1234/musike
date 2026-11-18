@@ -1,34 +1,13 @@
-# Musike implementation summary
+# Musike implementation summary — four-phase WIP
 
-The ZIP now includes the initial audit fixes and the follow-up implementation. Package version remains 1.5.1; no release was published.
+Base: Azan-Shah/musike main `85843fd`, applied without upstream rebase. The delivered source overlay retains all earlier performance/audit/direct-audio fixes and adds configurable full-byte queue caching, optional invite-only WhatsApp accounts with SQLite libraries, admin/ops with trusted IP attribution, and optional per-user Google imports/daily top-ups. Package version remains 1.5.1; no release/deployment was performed.
 
-## Changes
+Auth is off by default. Enabling it migrates shared JSON to the ADMIN_PHONE owner transactionally with a retained backup. SQLite WAL executes only inside a worker thread; no new npm dependency version or database container is needed. Existing standalone-native JSON and device preferences remain separate. New UI reuses the existing CSS tokens/React patterns and typed English translation keys, with explicit English fallback for Portuguese feature strings.
 
-- Fixed shared library loading and failed-save recovery; coalesced same-turn writes.
-- Added ordered optimistic edits and serialized backup restoration.
-- Paged standard/selectable/queue lists to keep visible DOM rows bounded while preserving full playback/selection context.
-- Deferred all route views, with readiness-aware history scroll restoration.
-- Reduced repeat player serialization and fixed saved queues whose current song lies beyond row 500.
-- Bounded browser/native/server caches and shared status requests.
-- Bounded media processes/downloads, queued work, captured output, timeouts and shutdown.
-- Made HD cache access asynchronous and pruning coalesced/bounded.
-- Corrected byte-range edge cases and added explicit static asset caching.
-- Retained prior splash, TV styling, artwork and abort-guard fixes.
+Warm audio is a local Range response, independent of upstream URL expiry at the switch. Radio fills early; manual/optimistic/repeat queues renew the server's warming window; stale requests and byte jobs cannot restore a skipped queue. This is not a measured claim of end-to-end gapless playback. HD merging/active files retain temporary-budget limitations documented in DEPLOYMENT-NOTES.md.
 
-## Verification
+Google authorization is import-only and encrypted per user; ordinary playback never sees the token. Source playlists and likes have public API fallbacks. Saved albums/history depend on private Music API availability and produce explicit partial reports on refusal. Latest history is capped at 60 unique tracks; subscriptions have no domain representation and are skipped. Mocked round-trip tests do not certify live Google scope/private-API access.
 
-30 regression tests passed. Typechecks and web/native/server/desktop builds passed. Main web JS is 653.44 kB (192.88 kB gzip), down from the initial patched 716.25 kB. The main native JS is 1346.56 kB (368.39 kB gzip), down from 1408.98 kB. Large-chunk warnings remain.
+Read IMPLEMENTATION-PLAN.md for exact file boundaries and rollout order; ARCHITECTURE.md for current routes/schema; DATABASE-DECISION.md for the SQLite/PostgreSQL decision; DEPLOYMENT-NOTES.md for every new environment placeholder, backup/migration and provider setup; TEST-RESULTS.md and ACCEPTANCE-CHECKLIST.md for verified results versus outstanding demo/device checks. HERMES_FOUND_BUGS.md retains the field report and appends the warm-cache follow-up.
 
-Browser visual checks were blocked by the environment's socket restriction. Live playback, native devices, installers, Docker and production load remain untested. See PERFORMANCE_AUDIT.md for exact limits and ARCHITECTURE.md for the current wiring/schema/contracts.
-
-## Running checks
-
-    pnpm install --frozen-lockfile
-    pnpm test
-    pnpm typecheck
-    pnpm --filter @musike/web build
-    pnpm --filter @musike/web build:native
-    pnpm --filter @musike/server bundle
-    pnpm --filter musike-desktop bundle
-
-The delivered archive is source-only and excludes node_modules and generated build outputs. Existing JSON data and backup formats remain compatible; there is no database migration. Back up library.json before replacing production source.
+Extract the overlay into the fork repository root. It contains complete final changed/new files, not a full repository or a patch. It excludes operator-owned environment/compose/deployment files, runtime data, node_modules and generated bundles. No real credentials, OTPs or phone numbers are included.

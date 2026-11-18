@@ -24,6 +24,7 @@ async function request<T>(path: string, init?: RequestInit & { json?: unknown })
     ...rest,
     headers: {
       [LANG_HEADER]: getLang(),
+      "x-musike-request": "1",
       ...(json !== undefined ? { "content-type": "application/json" } : {}),
       ...(rest.headers as Record<string, string> | undefined),
     },
@@ -31,16 +32,24 @@ async function request<T>(path: string, init?: RequestInit & { json?: unknown })
   });
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => ({}));
+  if (res.status === 401) window.dispatchEvent(new Event("musike:unauthorized"));
   if (!res.ok) throw new ApiError(res.status, body.error ?? getT().player.httpError(res.status), body.code);
   return body as T;
 }
 
+const clientId = (() => {
+  try { const key = "musike:client"; const id = sessionStorage.getItem(key) ?? crypto.randomUUID(); sessionStorage.setItem(key, id); return id; }
+  catch { return crypto.randomUUID(); }
+})();
+let prefetchRevision = Date.now() * 1000;
 export const api: MusikeApi = {
+  playbackSettings: () => request("/api/playback/settings"),
+  prefetch: (currentId, upcomingIds) => request<{ lookahead: number }>("/api/queue/prepare", { method: "POST", json: { clientId, currentId, upcomingIds, revision: ++prefetchRevision } }),
   search: (q: string, type: "song" | "video", signal?: AbortSignal) =>
     request<{ tracks: Track[] }>(`/api/search?q=${encodeURIComponent(q)}&type=${type}`, { signal }).then((r) => r.tracks),
   suggest: (q: string, signal?: AbortSignal) =>
     request<{ suggestions: string[] }>(`/api/suggest?q=${encodeURIComponent(q)}`, { signal }).then((r) => r.suggestions),
-  radio: (id: string) => request<{ tracks: Track[] }>(`/api/radio/${id}`).then((r) => r.tracks),
+  radio: (id: string, signal?: AbortSignal) => request<{ tracks: Track[] }>(`/api/radio/${id}`, { signal }).then((r) => r.tracks),
   genres: () => request<{ genres: Genre[] }>("/api/genres").then((r) => r.genres),
   genre: (id: string, signal?: AbortSignal) => request<GenrePage>(`/api/genres/${encodeURIComponent(id)}`, { signal }),
   genreArtists: (id: string, offset: number) =>

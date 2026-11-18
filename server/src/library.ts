@@ -1,5 +1,5 @@
 import { msg } from "./i18n.js";
-import { HttpError, VIDEO_ID, type Library, type Playlist, type Track } from "./types.js";
+import { HttpError, VIDEO_ID, type Library, type Playlist, type Track, type Origin } from "./types.js";
 
 // No Node-only imports here: the Android app runs this same module, with its own storage.
 
@@ -11,14 +11,50 @@ export interface LibraryStorage {
   write(json: string): Promise<void>;
 }
 
-let storage: LibraryStorage | null = null;
+const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+
+function sanitizeOrigin(input: unknown): Origin | undefined {
+  const o = (input ?? {}) as Partial<Origin>;
+  if (o.provider !== "youtube-music" || typeof o.sourceId !== "string" || o.sourceId.length > 600 || !["playlist", "album", "like", "history"].includes(o.kind ?? "")) return undefined;
+  return { provider: "youtube-music", sourceId: o.sourceId, kind: o.kind! };
+}
+export function sanitizeTrack(input: unknown): Track {
+  const t = (input ?? {}) as Record<string, unknown>;
+  const id = str(t.id, 11);
+  if (!VIDEO_ID.test(id)) throw new HttpError(400, msg("invalidTrack"));
+  const url = (v: unknown) => {
+    const s = str(v, 500);
+    return /^https:\/\//.test(s) ? s : "";
+  };
+  return {
+    id,
+    origin: sanitizeOrigin(t.origin),
+    title: str(t.title, 300) || "Untitled",
+    artist: str(t.artist, 300),
+    album: str(t.album, 300) || undefined,
+    duration: typeof t.duration === "number" && Number.isFinite(t.duration) ? Math.max(0, Math.round(t.duration)) : 0,
+    thumb: url(t.thumb),
+    art: url(t.art),
+    kind: t.kind === "video" ? "video" : "song",
+  };
+}
+
+export interface ImportResult {
+  playlistsAdded: number;
+  playlistsMerged: number;
+  tracksAdded: number;
+  favoritesAdded: number;
+}
+
+export function createLibrary(initialStorage?: LibraryStorage) {
+let storage: LibraryStorage | null = initialStorage ?? null;
 let state: Library | null = null;
 let loading: Promise<Library> | null = null;
 let writeChain: Promise<void> = Promise.resolve();
 let pendingSave: Promise<void> | null = null;
 
 /** Set once at startup, before any request. */
-export function useLibraryStorage(s: LibraryStorage) {
+function useLibraryStorage(s: LibraryStorage) {
   storage = s;
   state = null;
   loading = null;
@@ -54,27 +90,6 @@ function persist(): Promise<void> {
   return pendingSave;
 }
 
-const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
-
-export function sanitizeTrack(input: unknown): Track {
-  const t = (input ?? {}) as Record<string, unknown>;
-  const id = str(t.id, 11);
-  if (!VIDEO_ID.test(id)) throw new HttpError(400, msg("invalidTrack"));
-  const url = (v: unknown) => {
-    const s = str(v, 500);
-    return /^https:\/\//.test(s) ? s : "";
-  };
-  return {
-    id,
-    title: str(t.title, 300) || "Untitled",
-    artist: str(t.artist, 300),
-    album: str(t.album, 300) || undefined,
-    duration: typeof t.duration === "number" && Number.isFinite(t.duration) ? Math.max(0, Math.round(t.duration)) : 0,
-    thumb: url(t.thumb),
-    art: url(t.art),
-    kind: t.kind === "video" ? "video" : "song",
-  };
-}
 
 function findPlaylist(lib: Library, pid: string): Playlist {
   const p = lib.playlists.find((x) => x.id === pid);
@@ -82,12 +97,12 @@ function findPlaylist(lib: Library, pid: string): Playlist {
   return p;
 }
 
-export async function getLibrary(): Promise<Library> {
+async function getLibrary(): Promise<Library> {
   return load();
 }
 
 /** Bounded response for callers browsing a large local collection. Full export remains getLibrary(). */
-export async function getTrackPage(kind: "favorites" | "history" | "playlist", pid: string, offset: number, limit: number, q = "") {
+async function getTrackPage(kind: "favorites" | "history" | "playlist", pid: string, offset: number, limit: number, q = "") {
   const lib = await load();
   const source = kind === "playlist" ? findPlaylist(lib, pid).tracks : lib[kind];
   const term = q.trim().toLocaleLowerCase();
@@ -95,7 +110,7 @@ export async function getTrackPage(kind: "favorites" | "history" | "playlist", p
   return { tracks: matches.slice(offset, offset + limit), total: matches.length, offset, limit, hasMore: offset + limit < matches.length };
 }
 
-export async function addFavorite(track: Track): Promise<Track[]> {
+async function addFavorite(track: Track): Promise<Track[]> {
   const lib = await load();
   lib.favorites = [track, ...lib.favorites.filter((t) => t.id !== track.id)];
   await persist();
@@ -103,7 +118,7 @@ export async function addFavorite(track: Track): Promise<Track[]> {
 }
 
 /** Adds many at once (in the given order, on top), skipping ones already there. */
-export async function addFavorites(tracks: Track[]): Promise<Track[]> {
+async function addFavorites(tracks: Track[]): Promise<Track[]> {
   const lib = await load();
   const seen = new Set(lib.favorites.map((t) => t.id));
   const added = tracks.filter((t) => !seen.has(t.id) && !!seen.add(t.id));
@@ -112,32 +127,32 @@ export async function addFavorites(tracks: Track[]): Promise<Track[]> {
   return lib.favorites;
 }
 
-export async function removeFavorite(id: string): Promise<Track[]> {
+async function removeFavorite(id: string): Promise<Track[]> {
   const lib = await load();
   lib.favorites = lib.favorites.filter((t) => t.id !== id);
   await persist();
   return lib.favorites;
 }
 
-export async function pushHistory(track: Track): Promise<Track[]> {
+async function pushHistory(track: Track): Promise<Track[]> {
   const lib = await load();
   lib.history = [track, ...lib.history.filter((t) => t.id !== track.id)].slice(0, HISTORY_LIMIT);
   await persist();
   return lib.history;
 }
 
-export async function createPlaylist(name: string, tracks: Track[] = []): Promise<Playlist> {
+async function createPlaylist(name: string, tracks: Track[] = [], origin?: Origin): Promise<Playlist> {
   const lib = await load();
   const clean = name.trim().slice(0, 80);
   if (!clean) throw new HttpError(400, msg("playlistNameRequired"));
   const now = Date.now();
-  const playlist: Playlist = { id: randomUUID(), name: clean, createdAt: now, updatedAt: now, tracks };
+  const playlist: Playlist = { id: randomUUID(), name: clean, createdAt: now, updatedAt: now, tracks, ...(origin ? { origin } : {}) };
   lib.playlists.unshift(playlist);
   await persist();
   return playlist;
 }
 
-export async function renamePlaylist(pid: string, name: string): Promise<Playlist> {
+async function renamePlaylist(pid: string, name: string): Promise<Playlist> {
   const lib = await load();
   const p = findPlaylist(lib, pid);
   const clean = name.trim().slice(0, 80);
@@ -148,14 +163,14 @@ export async function renamePlaylist(pid: string, name: string): Promise<Playlis
   return p;
 }
 
-export async function deletePlaylist(pid: string): Promise<void> {
+async function deletePlaylist(pid: string): Promise<void> {
   const lib = await load();
   findPlaylist(lib, pid);
   lib.playlists = lib.playlists.filter((p) => p.id !== pid);
   await persist();
 }
 
-export async function addToPlaylist(pid: string, tracks: Track | Track[]): Promise<Playlist> {
+async function addToPlaylist(pid: string, tracks: Track | Track[]): Promise<Playlist> {
   const lib = await load();
   const p = findPlaylist(lib, pid);
   const seen = new Set(p.tracks.map((t) => t.id));
@@ -170,7 +185,7 @@ export async function addToPlaylist(pid: string, tracks: Track | Track[]): Promi
   return p;
 }
 
-export async function removeFromPlaylist(pid: string, trackId: string): Promise<Playlist> {
+async function removeFromPlaylist(pid: string, trackId: string): Promise<Playlist> {
   const lib = await load();
   const p = findPlaylist(lib, pid);
   p.tracks = p.tracks.filter((t) => t.id !== trackId);
@@ -212,23 +227,17 @@ function cleanLibrary(input: unknown): Library {
     const now = Date.now();
     const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : now);
     const id = str(p.id, 64);
-    return [{ id: /^[\w-]{8,64}$/.test(id) ? id : randomUUID(), name, createdAt: num(p.createdAt), updatedAt: num(p.updatedAt), tracks: cleanTracks(p.tracks) }];
+    return [{ id: /^[\w-]{8,64}$/.test(id) ? id : randomUUID(), name, origin: sanitizeOrigin(p.origin), createdAt: num(p.createdAt), updatedAt: num(p.updatedAt), tracks: cleanTracks(p.tracks) }];
   });
   return { favorites: cleanTracks(lib.favorites), playlists, history: cleanTracks(lib.history, HISTORY_LIMIT) };
 }
 
-export interface ImportResult {
-  playlistsAdded: number;
-  playlistsMerged: number;
-  tracksAdded: number;
-  favoritesAdded: number;
-}
 
 /**
  * "merge" adds what is missing and never deletes (playlists match by id, then by name).
  * "replace" swaps the whole library for the backup's.
  */
-export async function importLibrary(input: unknown, mode: "merge" | "replace"): Promise<ImportResult> {
+async function importLibrary(input: unknown, mode: "merge" | "replace"): Promise<ImportResult> {
   const incoming = cleanLibrary(input);
   const lib = await load();
   const result: ImportResult = { playlistsAdded: 0, playlistsMerged: 0, tracksAdded: 0, favoritesAdded: 0 };
@@ -281,3 +290,23 @@ export async function importLibrary(input: unknown, mode: "merge" | "replace"): 
   await persist();
   return result;
 }
+
+return { useLibraryStorage, getLibrary, getTrackPage, addFavorite, addFavorites, removeFavorite, pushHistory, createPlaylist, renamePlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, importLibrary };
+}
+
+const sharedLibrary = createLibrary();
+
+
+export const useLibraryStorage = sharedLibrary.useLibraryStorage;
+export const getLibrary = sharedLibrary.getLibrary;
+export const getTrackPage = sharedLibrary.getTrackPage;
+export const addFavorite = sharedLibrary.addFavorite;
+export const addFavorites = sharedLibrary.addFavorites;
+export const removeFavorite = sharedLibrary.removeFavorite;
+export const pushHistory = sharedLibrary.pushHistory;
+export const createPlaylist = sharedLibrary.createPlaylist;
+export const renamePlaylist = sharedLibrary.renamePlaylist;
+export const deletePlaylist = sharedLibrary.deletePlaylist;
+export const addToPlaylist = sharedLibrary.addToPlaylist;
+export const removeFromPlaylist = sharedLibrary.removeFromPlaylist;
+export const importLibrary = sharedLibrary.importLibrary;

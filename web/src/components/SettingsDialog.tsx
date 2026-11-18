@@ -13,6 +13,8 @@ import { capabilities, type Channel } from "../lib/api";
 import { cn } from "../lib/format";
 import { useSystem } from "../stores/system";
 import { useUi } from "../stores/ui";
+import { useSession } from "../stores/session";
+import { AccountPanel } from "./AccountPanel";
 import { BackupSection } from "./BackupSection";
 import { AccentPicker, LayoutSection } from "./CustomizeSection";
 import { Modal } from "./Modal";
@@ -75,6 +77,8 @@ function Dependency({ name, role, path, fix }: { name: string; role: string; pat
 }
 
 export function SettingsDialog() {
+  const session = useSession();
+  const canAdmin = !session.enabled || session.user?.role === "admin";
   const open = useUi((s) => s.settingsOpen);
   const setOpen = useUi((s) => s.setSettingsOpen);
   const theme = useUi((s) => s.theme);
@@ -87,7 +91,7 @@ export function SettingsDialog() {
   const setLang = useI18n((s) => s.setLang);
 
   useEffect(() => {
-    if (open) void load();
+    if (open && canAdmin) void load();
   }, [open, load]);
 
   useEffect(() => {
@@ -155,8 +159,9 @@ export function SettingsDialog() {
         <LayoutSection />
 
         <BackupSection />
+          <AccountPanel />
 
-        {capabilities.engineSettings && (
+        {capabilities.engineSettings && canAdmin && (
         <section className="flex flex-col gap-3">
           <h3 className="text-xs font-medium text-fg-3">{t.settings.engine}</h3>
 

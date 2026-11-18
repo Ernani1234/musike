@@ -1,4 +1,4 @@
-import { mkdir, readdir, rename, rm, stat, utimes } from "node:fs/promises";
+import { mkdir, rename, rm, stat, utimes } from "node:fs/promises";
 import path from "node:path";
 import { ensureComponent } from "./bootstrap.js";
 import { config } from "./config.js";
@@ -6,6 +6,7 @@ import { DEFAULT_CLIENTS, directAudio, fetchRemoteClients } from "./directAudio.
 import { tools } from "./tools.js";
 import { msg } from "./i18n.js";
 import { HttpError } from "./types.js";
+import { trimCache, mutateCache } from "./cacheBudget.js";
 import { ProcessError, runProcess, stopProcesses } from "./process.js";
 import { QueueError, TaskQueue } from "./taskQueue.js";
 
@@ -123,6 +124,7 @@ function toStream(f: RawFormat, kind: "audio" | "video"): StreamFormat {
 function pickAudio(formats: RawFormat[]): RawFormat | undefined {
   const audio = formats.filter((f) => isAudioOnly(f) && isHttps(f));
   // AAC in MP4 plays everywhere, including iOS Safari. Opus/WebM is the fallback.
+  if (config.audioQuality === "high") return audio.filter((f) => f.ext === "m4a").sort((a, b) => (b.abr ?? 0) - (a.abr ?? 0))[0] ?? audio.sort((a, b) => (b.abr ?? 0) - (a.abr ?? 0))[0];
   return (
     audio.find((f) => f.format_id === "140") ??
     audio.filter((f) => f.ext === "m4a").sort((a, b) => (b.abr ?? 0) - (a.abr ?? 0))[0] ??
@@ -151,7 +153,7 @@ const RESOLVED_LIMIT = 200;
 let directClients: string[] | null = null;
 let directClientsAt = 0;
 
-async function clientsForDirect(): Promise<string[]> {
+export async function clientsForDirect(): Promise<string[]> {
   if (Date.now() - directClientsAt > 6 * 3600_000) {
     directClientsAt = Date.now();
     directClients = (await fetchRemoteClients()) ?? directClients;
@@ -223,30 +225,9 @@ export function invalidate(id: string) {
 const downloads = new Map<string, Promise<string>>();
 
 let pruning: Promise<void> | null = null;
-async function prune(): Promise<void> {
-  let names: string[];
-  try { names = (await readdir(config.cacheDir)).filter((n) => n.endsWith(".720.mp4")); }
-  catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return; throw err; }
-  const files: { p: string; size: number; used: number }[] = [];
-  for (let i = 0; i < names.length; i += 8) {
-    const batch = await Promise.all(names.slice(i, i + 8).map(async (n) => {
-      const p = path.join(config.cacheDir, n);
-      try { const s = await stat(p); return { p, size: s.size, used: s.mtimeMs }; }
-      catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; throw err; }
-    }));
-    files.push(...batch.filter((file): file is NonNullable<typeof file> => file !== null));
-  }
-  let total = files.reduce((sum, f) => sum + f.size, 0);
-  for (const f of files.sort((a, b) => a.used - b.used)) {
-    if (total <= config.cacheMaxBytes) break;
-    await rm(f.p, { force: true });
-    total -= f.size;
-  }
-}
-
-/** Coalesce pruning and bound metadata reads to eight at a time. */
+/** Shared audio/video budget and active-playback leases. */
 export function pruneCache(): Promise<void> {
-  pruning ??= prune().finally(() => { pruning = null; });
+  pruning ??= trimCache().finally(() => { pruning = null; });
   return pruning;
 }
 
@@ -276,7 +257,7 @@ export function downloadHd(id: string): Promise<string> {
       ),
     )
     .then(async () => {
-      await rename(tmp, file);
+      await mutateCache(() => rename(tmp, file));
       pruneCache().catch(() => {});
       return file;
     })

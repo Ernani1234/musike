@@ -68,7 +68,7 @@ export interface SystemMedia {
 export interface MusikeApi {
   search(q: string, type: "song" | "video", signal?: AbortSignal): Promise<Track[]>;
   suggest(q: string, signal?: AbortSignal): Promise<string[]>;
-  radio(id: string): Promise<Track[]>;
+  radio(id: string, signal?: AbortSignal): Promise<Track[]>;
   genres(): Promise<Genre[]>;
   genre(id: string, signal?: AbortSignal): Promise<GenrePage>;
   genreArtists(id: string, offset: number): Promise<{ artists: GenreArtist[]; hasMore: boolean }>;
@@ -77,6 +77,8 @@ export interface MusikeApi {
   searchAlbums(q: string, signal?: AbortSignal): Promise<AlbumCard[]>;
   /** The music video matching a song, or null when YouTube has none. */
   videoFor(t: Track): Promise<Track | null>;
+  prefetch?(currentId: string, upcomingIds: string[]): Promise<{ lookahead: number } | void>;
+  playbackSettings?(): Promise<{ lookahead: number; videoQuality: "sd" | "hd" }>;
   prepare(id: string, signal?: AbortSignal): Promise<Prepared>;
 
   library(): Promise<Library>;
