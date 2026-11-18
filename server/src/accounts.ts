@@ -135,7 +135,7 @@ export class Accounts {
     const url = new URL(base); if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw fail(503, "Invalid OTP provider configuration");
     const response = await (this.options.transport ?? fetch)(`${base.replace(/\/$/, "")}/workspaces/${encodeURIComponent(workspace)}/proxy/api/sessions/${encodeURIComponent(session)}/messages/text`, {
       method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ to: phone, text: `Musike login code: ${code}. Expires in ${Math.ceil(expiry / 60)} minutes. Do not share this code.` }), signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({ to: phone, text: `Musike login code: ${code}. Expires in ${Math.ceil(expiry / 60)} minutes. Do not share this code.` }), signal: AbortSignal.timeout(30_000),
     });
     await response.body?.cancel();
     if (!response.ok) throw fail(response.status >= 400 && response.status < 500 && response.status !== 408 ? 400 : 503, "OTP delivery failed");
