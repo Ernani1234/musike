@@ -155,19 +155,50 @@
       document.documentElement.lang = TEXTS[lang] ? lang : "en";
       document.getElementById("status").textContent = t.starting;
       const mb = (n) => (n / 1048576).toFixed(1);
+      const rows = new Map();
+      const rowsHost = document.getElementById("rows");
+
+      function componentRow(key) {
+        const el = document.createElement("div");
+        el.className = "row";
+        const heading = document.createElement("span");
+        const name = document.createElement("b");
+        name.textContent = t.names[key] ?? key;
+        const label = document.createElement("em");
+        heading.append(name, label);
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        const fill = document.createElement("i");
+        bar.appendChild(fill);
+        el.append(heading, bar);
+        rowsHost.appendChild(el);
+        return { el, label, fill };
+      }
 
       window.update = (state) => {
         const essentials = Object.entries(state).filter(([k]) => k !== "ffmpeg");
         if (!essentials.length) return;
         document.getElementById("status").textContent = t.downloading;
-        document.getElementById("rows").innerHTML = essentials
-          .map(([key, s]) => {
+        const present = new Set(essentials.map(([key]) => key));
+        for (const [key, row] of rows) {
+          if (!present.has(key)) {
+            row.el.remove();
+            rows.delete(key);
+          }
+        }
+        for (const [key, s] of essentials) {
             const pct = s.total ? Math.round((s.received / s.total) * 100) : 0;
             const label = s.status === "done" ? t.ready : s.status === "extracting" ? t.extracting : s.total ? t.of(mb(s.received), mb(s.total)) : `${mb(s.received)} MB`;
             const width = s.status === "done" || s.status === "extracting" ? 100 : pct;
-            return `<div class="row"><span><b>${t.names[key] ?? key}</b><em>${label}</em></span><div class="bar"><i style="width:${width}%"></i></div></div>`;
-          })
-          .join("");
+            let row = rows.get(key);
+            if (!row) {
+              row = componentRow(key);
+              rows.set(key, row);
+            }
+            if (row.label.textContent !== label) row.label.textContent = label;
+            const cssWidth = `${Math.max(0, Math.min(100, width))}%`;
+            if (row.fill.style.width !== cssWidth) row.fill.style.width = cssWidth;
+        }
       };
 
       window.fail = (message) => {

@@ -212,6 +212,10 @@ export const pt: Messages = {
   },
 
   trackList: {
+    previous: "Anterior",
+    next: "Próxima",
+    pageRange: (start: number, end: number, total: number) => `${start}–${end} de ${total}`,
+    loadMore: "Carregar mais músicas",
     moreFor: (title) => `Mais opções para ${title}`,
     more: "Mais opções",
     title: "Título",

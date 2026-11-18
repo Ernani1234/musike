@@ -4,6 +4,7 @@
   "version": "1.5.1",
   "type": "module",
   "scripts": {
+    "test": "pnpm --filter @musike/server test",
     "dev": "pnpm --parallel --filter ./server --filter ./web dev",
     "build": "pnpm --filter ./web build",
     "start": "pnpm --filter ./server start",

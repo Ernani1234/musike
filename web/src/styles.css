@@ -109,6 +109,9 @@
 }
 
 @layer components {
+  .button-secondary {
+    @apply h-11 rounded-full bg-surface-3 px-5 text-sm font-medium text-fg transition-colors hover:bg-surface-4;
+  }
   /* Floating island with a nested bezel: outer shell + inner core (high-end-visual-design). */
   .island {
     background: var(--surface-1);

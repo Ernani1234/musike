@@ -5,7 +5,7 @@ import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, L
  * (lib/api.ts); the Android app does the same work on the phone (native/api.ts). The build picks one.
  */
 
-export type ErrorCode = "tool_missing" | "maybe_outdated" | "bot_check";
+export type ErrorCode = "tool_missing" | "maybe_outdated" | "bot_check" | "server_busy";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public code?: ErrorCode) {

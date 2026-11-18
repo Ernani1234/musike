@@ -218,6 +218,10 @@ export const en = {
   },
 
   trackList: {
+    previous: "Previous",
+    next: "Next",
+    pageRange: (start: number, end: number, total: number) => `${start}–${end} of ${total}`,
+    loadMore: "Load more songs",
     moreFor: (title: string) => `More options for ${title}`,
     more: "More options",
     title: "Title",

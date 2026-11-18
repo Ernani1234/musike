@@ -21,7 +21,14 @@ export function Cover({ kind, tracks, className, iconSize = 40 }: { kind: CoverK
       </span>
     );
   }
-  const arts = [...new Map(tracks.map((t) => [t.thumb, t])).values()].slice(0, 4);
+  const arts: Track[] = [];
+  const seen = new Set<string>();
+  for (const track of tracks) {
+    if (seen.has(track.thumb)) continue;
+    seen.add(track.thumb);
+    arts.push(track);
+    if (arts.length === 4) break;
+  }
   if (arts.length < 4) {
     return <Artwork src={arts[0]?.art} fallback={arts[0]?.thumb} className={className} iconSize={iconSize} />;
   }

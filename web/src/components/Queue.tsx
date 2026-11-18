@@ -4,6 +4,9 @@ import { cn, formatTime } from "../lib/format";
 import { usePlayer } from "../player/player";
 import { Artwork } from "./Artwork";
 import { Equalizer } from "./Brand";
+import { useListPage } from "../hooks/useListPage";
+import { ListPager } from "./ListPager";
+import { useMemo } from "react";
 
 export function QueueList({ compact = false }: { compact?: boolean }) {
   const t = useT();
@@ -17,7 +20,8 @@ export function QueueList({ compact = false }: { compact?: boolean }) {
   const setAutoRadio = usePlayer((s) => s.setAutoRadio);
 
   const current = queue[index];
-  const upcoming = queue.slice(index + 1);
+  const upcoming = useMemo(() => queue.slice(index + 1), [queue, index]);
+  const page = useListPage(upcoming);
 
   if (!current) {
     return (
@@ -82,7 +86,8 @@ export function QueueList({ compact = false }: { compact?: boolean }) {
           )}
         </div>
         {upcoming.length ? (
-          <ul>{upcoming.map((_, k) => row(index + 1 + k, false))}</ul>
+          <><ul>{page.items.map((_, k) => row(index + 1 + page.start + k, false))}</ul>
+            <ListPager {...page} total={upcoming.length} /></>
         ) : (
           <p className="px-2 text-sm text-fg-2">
             {t.queue.nothingQueued} {autoRadio ? t.queue.radioContinues : ""}

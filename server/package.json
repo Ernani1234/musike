@@ -4,6 +4,7 @@
   "version": "1.5.1",
   "type": "module",
   "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
     "dev": "tsx watch --clear-screen=false src/index.ts",
     "start": "tsx src/index.ts",
     "bundle": "node scripts/bundle.mjs",

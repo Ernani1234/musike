@@ -11,6 +11,7 @@ import { useI18n, useT, type Lang } from "../i18n";
 import { cn } from "../lib/format";
 import { paths } from "../lib/routes";
 import type { GenreArtist, GenrePage } from "../lib/types";
+import { SessionCache } from "../lib/sessionCache";
 
 type View = "artists" | "tracks";
 
@@ -28,7 +29,7 @@ interface MoreArtists {
 }
 
 // Artists added with "Load more", kept per genre and language: coming back from an artist shows the same long list.
-const moreMemo = new Map<string, MoreArtists>();
+const moreMemo = new SessionCache<string, MoreArtists>(30, 30 * 60_000);
 
 function GenreBody({ id, lang }: { id: string; lang: Lang }) {
   const location = useLocation();
@@ -180,7 +181,7 @@ function GenreBody({ id, lang }: { id: string; lang: Lang }) {
 function ArtistGridSkeleton() {
   const t = useT();
   return (
-    <ul aria-label={t.common.loading} className="grid grid-cols-2 gap-x-3 gap-y-5 px-4 sm:grid-cols-3 md:px-6 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+    <ul data-route-loading aria-label={t.common.loading} className="grid grid-cols-2 gap-x-3 gap-y-5 px-4 sm:grid-cols-3 md:px-6 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
       {Array.from({ length: 12 }, (_, i) => (
         <li key={i} className="flex flex-col gap-2">
           <span className="skeleton aspect-square w-full rounded-[14px]" />

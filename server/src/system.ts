@@ -29,6 +29,8 @@ const RELEASES: Record<Channel, string> = {
 let version: string | null | undefined;
 let job: Job | null = null;
 const latest = new Map<Channel, { tag: string | null; at: number }>();
+const latestPending = new Map<Channel, Promise<string | null>>();
+let versionPending: Promise<string | null> | null = null;
 
 /** Runs a command and streams its output lines into `onLine`. Resolves with the exit code. */
 function stream(cmd: string, args: string[], onLine: (line: string) => void, timeoutMs: number): Promise<number> {
@@ -56,7 +58,7 @@ function stream(cmd: string, args: string[], onLine: (line: string) => void, tim
   });
 }
 
-async function readVersion(): Promise<string | null> {
+async function probeVersion(): Promise<string | null> {
   const { ytdlp } = tools();
   if (!ytdlp) return null;
   let out = "";
@@ -64,7 +66,12 @@ async function readVersion(): Promise<string | null> {
   return code === 0 && out ? out : null;
 }
 
-async function latestTag(channel: Channel): Promise<string | null> {
+function readVersion(): Promise<string | null> {
+  versionPending ??= probeVersion().finally(() => { versionPending = null; });
+  return versionPending;
+}
+
+async function fetchLatestTag(channel: Channel): Promise<string | null> {
   const cached = latest.get(channel);
   if (cached && Date.now() - cached.at < 30 * 60_000) return cached.tag;
   try {
@@ -78,6 +85,14 @@ async function latestTag(channel: Channel): Promise<string | null> {
   } catch {
     return cached?.tag ?? null;
   }
+}
+
+function latestTag(channel: Channel): Promise<string | null> {
+  const pending = latestPending.get(channel);
+  if (pending) return pending;
+  const work = fetchLatestTag(channel).finally(() => { latestPending.delete(channel); });
+  latestPending.set(channel, work);
+  return work;
 }
 
 /** Compares dotted numeric versions like 2026.08.19 and 2026.10.10.232345. */

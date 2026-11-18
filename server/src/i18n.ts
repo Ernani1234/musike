@@ -7,6 +7,8 @@ export type Lang = "en" | "pt-BR";
 type Params = Record<string, string | number>;
 
 const en = {
+  serverBusy: "The server is busy. Try again in a moment.",
+  ytdlpOutputLimit: "The media tool returned too much data.",
   invalidVideoId: "Invalid video ID.",
   emptyQuery: "Type something to search.",
   searchFailed: "Search is unavailable right now ({detail}). Try again in a moment.",
@@ -58,6 +60,8 @@ const en = {
 export type MsgKey = keyof typeof en;
 
 const pt: Record<MsgKey, string> = {
+  serverBusy: "O servidor está ocupado. Tente de novo em instantes.",
+  ytdlpOutputLimit: "A ferramenta de mídia retornou dados demais.",
   invalidVideoId: "ID de vídeo inválido.",
   emptyQuery: "Digite algo para buscar.",
   searchFailed: "A busca está indisponível agora ({detail}). Tente de novo em instantes.",

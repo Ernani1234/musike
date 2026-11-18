@@ -1,4 +1,5 @@
 import { Innertube } from "youtubei.js";
+import { cached } from "./cache.js";
 import { config } from "./config.js";
 import { msg, youtubeLang, type Lang } from "./i18n.js";
 import type { Track } from "./types.js";
@@ -174,19 +175,19 @@ function isArtistChannel(channel: string, artist: string): boolean {
   });
 }
 
-const videoForCache = new Map<string, Track | null>();
+const videoForCache = cached(6 * 3600_000, async (key): Promise<Track | null> => {
+  const [title, artist, duration] = JSON.parse(key) as [string, string, number];
+  let found = pickClip(await videoSearch(`${title} ${artist}`), title, artist, duration);
+  found ??= pickClip(await videoSearch(`${artist.split(",")[0]} ${title} clipe`), title, artist, duration);
+  return found;
+});
 
 /**
  * Finds the music video for a song (YouTube Music "art tracks" are audio with a still cover).
  * Scores video search results by artist, title, duration and red flags like covers or live versions.
  */
-export async function findVideoFor(id: string, title: string, artist: string, duration: number): Promise<Track | null> {
-  if (videoForCache.has(id)) return videoForCache.get(id)!;
-  // Two phrasings: results differ enough that the second often finds a clip the first missed.
-  let found = pickClip(await videoSearch(`${title} ${artist}`), title, artist, duration);
-  found ??= pickClip(await videoSearch(`${artist.split(",")[0]} ${title} clipe`), title, artist, duration);
-  videoForCache.set(id, found);
-  return found;
+export async function findVideoFor(_id: string, title: string, artist: string, duration: number): Promise<Track | null> {
+  return videoForCache(JSON.stringify([title, artist, duration]));
 }
 
 async function videoSearch(query: string): Promise<Track[]> {

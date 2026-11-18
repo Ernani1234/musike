@@ -1,4 +1,5 @@
 import type { Innertube } from "youtubei.js";
+import { cached } from "./cache.js";
 import { isLang, msg, type Lang } from "./i18n.js";
 import { sized, text, toTrack, withClient } from "./search.js";
 import type { Track } from "./types.js";
@@ -75,21 +76,6 @@ const MAX_ARTISTS = 600;
 const PLAYLISTS_PER_ROUND = 4;
 const MAX_GENRE_TRACKS = 150;
 const MAX_HITS = 50;
-
-/** Time-boxed memo: these pages change slowly, and going back and forth between them should be instant. */
-function cached<T>(ttl: number, load: (key: string) => Promise<T>): (key: string) => Promise<T> {
-  const memo = new Map<string, { at: number; value: Promise<T> }>();
-  return (key) => {
-    const hit = memo.get(key);
-    if (hit && Date.now() - hit.at < ttl) return hit.value;
-    if (memo.size > 200) memo.delete(memo.keys().next().value!);
-    const value = load(key);
-    memo.set(key, { at: Date.now(), value });
-    // Failures are not cached, so the next visit tries again.
-    value.catch(() => memo.get(key)?.value === value && memo.delete(key));
-    return value;
-  };
-}
 
 // youtubei.js has no typed helper for the genre pages, so these responses are read defensively.
 const browse = (yt: Innertube, payload: Record<string, unknown>): Promise<any> =>

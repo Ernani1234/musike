@@ -5,6 +5,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { msg } from "./i18n.js";
 import { HttpError } from "./types.js";
 import { invalidate, resolveStreams, type StreamFormat } from "./ytdlp.js";
+import { byteRange } from "./range.js";
 
 const PASS_HEADERS = ["content-length", "content-range", "accept-ranges", "last-modified"];
 
@@ -62,29 +63,22 @@ export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: 
 /** Serves a local file with byte-range support (used for cached HD video). */
 export async function serveFile(req: FastifyRequest, reply: FastifyReply, file: string, mime: string) {
   const { size } = await stat(file);
-  const range = typeof req.headers.range === "string" ? /bytes=(\d*)-(\d*)/.exec(req.headers.range) : null;
+  const range = byteRange(typeof req.headers.range === "string" ? req.headers.range : undefined, size);
 
   reply.header("content-type", mime);
   reply.header("accept-ranges", "bytes");
   reply.header("cache-control", "no-store");
 
-  if (!range) {
+  if (range === false) {
+    reply.code(416).header("content-range", `bytes */${size}`);
+    return reply.send();
+  }
+  if (range === null) {
     reply.header("content-length", size);
     return reply.send(createReadStream(file));
   }
 
-  let start = range[1] ? Number(range[1]) : NaN;
-  let end = range[2] ? Number(range[2]) : size - 1;
-  if (Number.isNaN(start)) {
-    // suffix range: bytes=-N
-    start = Math.max(0, size - end);
-    end = size - 1;
-  }
-  end = Math.min(end, size - 1);
-  if (start > end || start >= size) {
-    reply.code(416).header("content-range", `bytes */${size}`);
-    return reply.send();
-  }
+  const { start, end } = range;
 
   reply.code(206);
   reply.header("content-range", `bytes ${start}-${end}/${size}`);

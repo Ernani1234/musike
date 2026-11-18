@@ -80,7 +80,7 @@ export function summarize(backup: Backup) {
 }
 
 export async function restoreBackup(backup: Backup, mode: "merge" | "replace", applySettings: boolean): Promise<ImportResult> {
-  const result = await api.importLibrary(backup, mode);
+  const result = await useLibrary.getState().importLibrary(backup, mode);
   const s = backup.settings;
   if (applySettings && s) {
     const player = usePlayer.getState();
@@ -92,6 +92,5 @@ export async function restoreBackup(backup: Backup, mode: "merge" | "replace", a
     if (s.quality === "sd" || s.quality === "hd") player.setQuality(s.quality);
     if (typeof s.preferVideo === "boolean") player.setPreferVideo(s.preferVideo);
   }
-  await useLibrary.getState().load();
   return result;
 }

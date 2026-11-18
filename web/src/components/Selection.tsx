@@ -1,5 +1,8 @@
 import { CheckIcon, HeartIcon, PlayIcon, PlaylistIcon, VideoCameraIcon } from "@phosphor-icons/react";
 import { useState, type ReactNode } from "react";
+import { useListPage } from "../hooks/useListPage";
+import { ListPager } from "./ListPager";
+import { trackIds } from "../lib/trackIds";
 import { useT } from "../i18n";
 import { cn, formatTime } from "../lib/format";
 import type { Track } from "../lib/types";
@@ -155,8 +158,8 @@ export function SelectableRow({
   trailing?: ReactNode;
 }) {
   const isCurrent = usePlayer((s) => selectCurrent(s)?.id === track.id);
-  const isPlaying = usePlayer((s) => s.status === "playing" || s.status === "loading");
-  const isFavorite = useLibrary((s) => s.favorites.some((f) => f.id === track.id));
+  const isPlaying = usePlayer((s) => selectCurrent(s)?.id === track.id && (s.status === "playing" || s.status === "loading"));
+  const isFavorite = useLibrary((s) => trackIds(s.favorites).has(track.id));
   const t = useT();
 
   return (
@@ -212,6 +215,7 @@ export function SelectableRow({
 
 /** A plain list of tracks to pick from, with its own selection bar. Remount (via `key`) to reset the selection. */
 export function SelectableTrackList({ tracks, numbered }: { tracks: Track[]; numbered?: boolean }) {
+  const page = useListPage(tracks);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const playList = usePlayer((s) => s.playList);
   const chosen = tracks.filter((t) => selected.has(t.id));
@@ -235,18 +239,19 @@ export function SelectableTrackList({ tracks, numbered }: { tracks: Track[]; num
         label={chosen.length ? <SelectedCount n={chosen.length} total={tracks.length} /> : <Short phone={t.selection.all} wide={t.selection.selectAll} />}
       />
       <ul className="mt-2 flex flex-col px-2 md:px-3">
-        {tracks.map((t, i) => (
+        {page.items.map((t, i) => (
           <li key={t.id}>
             <SelectableRow
               track={t}
-              position={numbered ? i + 1 : undefined}
+              position={numbered ? page.start + i + 1 : undefined}
               selected={selected.has(t.id)}
               onToggle={() => toggle(t.id)}
-              onPlay={() => playList(tracks, i)}
+              onPlay={() => playList(tracks, page.start + i)}
             />
           </li>
         ))}
       </ul>
+      <ListPager {...page} total={tracks.length} />
     </>
   );
 }

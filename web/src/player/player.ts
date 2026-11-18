@@ -4,6 +4,8 @@ import { api, capabilities, explainStreamError, streamSource, systemMedia, type 
 import { createAudio } from "../lib/audio";
 import { shuffled } from "../lib/format";
 import type { Track } from "../lib/types";
+import { playerWriter, type SavedPlayer as Saved } from "../lib/playerPersistence";
+import { SessionCache } from "../lib/sessionCache";
 import { useLibrary } from "../stores/library";
 import { openSettings } from "../stores/system";
 import { toast } from "../stores/ui";
@@ -80,20 +82,6 @@ let recordedToken = -1;
 
 const STORAGE_KEY = "musike:player";
 
-interface Saved {
-  queue: Track[];
-  original: Track[] | null;
-  index: number;
-  position: number;
-  volume: number;
-  muted: boolean;
-  shuffle: boolean;
-  repeat: Repeat;
-  preferVideo: boolean;
-  quality: Quality;
-  autoRadio: boolean;
-}
-
 function readSaved(): Partial<Saved> {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as Partial<Saved>;
@@ -108,7 +96,7 @@ const saved = readSaved();
  * Songs from YouTube Music are "art tracks": audio with a still cover. In Video mode we play the
  * song's music video instead. Song id → video id, or null when YouTube has no clip for it.
  */
-const clipFor = new Map<string, string | null>();
+const clipFor = new SessionCache<string, string | null>(200, 6 * 3600_000);
 const clipLookups = new Map<string, Promise<string | null>>();
 
 function lookupClip(track: Track): Promise<string | null> {
@@ -565,23 +553,10 @@ export const selectCurrent = (s: PlayerState): Track | null => s.queue[s.index] 
 
 // Persistence: resume the same queue and position after a reload.
 
+const writePlayer = playerWriter({ setItem: (key, value) => localStorage.setItem(key, value) }, STORAGE_KEY);
 function persist() {
-  const s = usePlayer.getState();
-  const data: Saved = {
-    queue: s.queue.slice(0, 500),
-    original: s.original?.slice(0, 500) ?? null,
-    index: s.index,
-    position: s.position,
-    volume: s.volume,
-    muted: s.muted,
-    shuffle: s.shuffle,
-    repeat: s.repeat,
-    preferVideo: s.preferVideo,
-    quality: s.quality,
-    autoRadio: s.autoRadio,
-  };
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    writePlayer(usePlayer.getState());
   } catch {
     /* storage full or blocked */
   }

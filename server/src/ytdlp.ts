@@ -1,5 +1,3 @@
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
 import { mkdir, readdir, rename, rm, stat, utimes } from "node:fs/promises";
 import path from "node:path";
 import { ensureComponent } from "./bootstrap.js";
@@ -8,6 +6,8 @@ import { DEFAULT_CLIENTS, directAudio, fetchRemoteClients } from "./directAudio.
 import { tools } from "./tools.js";
 import { msg } from "./i18n.js";
 import { HttpError } from "./types.js";
+import { ProcessError, runProcess, stopProcesses } from "./process.js";
+import { QueueError, TaskQueue } from "./taskQueue.js";
 
 export interface StreamFormat {
   formatId: string;
@@ -39,6 +39,9 @@ interface RawFormat {
 
 const RESOLVE_TIMEOUT_MS = 45_000;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
+const processes = new TaskQueue(3, 32, 30_000);
+const hdJobs = new TaskQueue(2, 8, 30_000);
+let closing = false;
 
 let maintenance: Promise<unknown> | null = null;
 
@@ -52,31 +55,34 @@ export function holdDuring<T>(job: Promise<T>): Promise<T> {
 }
 
 async function run(args: string[], timeoutMs: number): Promise<string> {
-  if (maintenance) await maintenance.catch(() => {});
-  const { ytdlp, env } = tools();
-  if (!ytdlp) {
-    throw new HttpError(503, msg("ytdlpMissing"), "tool_missing");
+  try {
+    return await processes.run(async () => {
+      if (maintenance) await maintenance.catch(() => {});
+      if (closing) throw new QueueError("closed");
+      const { ytdlp, env } = tools();
+      if (!ytdlp) throw new HttpError(503, msg("ytdlpMissing"), "tool_missing");
+      const result = await runProcess(ytdlp, [...config.ytdlpExtraArgs, ...args], env, timeoutMs);
+      if (result.code !== 0) throw toHttpError(result.stderr);
+      return result.stdout;
+    });
+  } catch (err) {
+    if (err instanceof QueueError || (err instanceof ProcessError && err.reason === "shutdown")) {
+      throw new HttpError(503, msg("serverBusy"), "server_busy");
+    }
+    if (err instanceof ProcessError) {
+      if (err.reason === "timeout") throw new HttpError(504, msg("ytdlpTimeout"));
+      if (err.reason === "output") throw new HttpError(502, msg("ytdlpOutputLimit"));
+      throw new HttpError(503, msg("ytdlpCantRun", { error: err.message }), "tool_missing");
+    }
+    throw err;
   }
-  return new Promise((resolve, reject) => {
-    const child = spawn(ytdlp, [...config.ytdlpExtraArgs, ...args], { windowsHide: true, env });
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new HttpError(504, msg("ytdlpTimeout")));
-    }, timeoutMs);
-    child.stdout.on("data", (d) => (stdout += d));
-    child.stderr.on("data", (d) => (stderr += d));
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      reject(new HttpError(503, msg("ytdlpCantRun", { error: err.message }), "tool_missing"));
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0) return resolve(stdout);
-      reject(toHttpError(stderr));
-    });
-  });
+}
+
+export function shutdownMedia() {
+  closing = true;
+  hdJobs.close();
+  processes.close();
+  stopProcesses();
 }
 
 // Failures that usually mean YouTube changed and yt-dlp needs an update.
@@ -138,6 +144,7 @@ function expiryOf(url: string): number {
 
 const cache = new Map<string, Promise<Resolved>>();
 const resolvedAt = new Map<string, Resolved>();
+const RESOLVED_LIMIT = 200;
 
 // When yt-dlp fails, the clients to ask YouTube directly (see directAudio.ts), refreshed from the repository.
 // Read lazily: directAudio.ts and this module import each other through search.ts.
@@ -158,6 +165,7 @@ async function clientsForDirect(): Promise<string[]> {
  * yt-dlp's job.
  */
 async function resolveDirect(id: string, ytdlpError: unknown): Promise<Resolved> {
+  if (ytdlpError instanceof HttpError && ytdlpError.code === "server_busy") throw ytdlpError;
   // Removed, private or age-restricted videos won't play any other way either.
   if (ytdlpError instanceof HttpError && (ytdlpError.status === 403 || ytdlpError.status === 404)) throw ytdlpError;
   try {
@@ -197,6 +205,8 @@ export function resolveStreams(id: string): Promise<Resolved> {
     })
     .catch((err) => resolveDirect(id, err))
     .then((resolved) => {
+      for (const [key, value] of resolvedAt) if (value.expiresAt <= Date.now()) resolvedAt.delete(key);
+      if (resolvedAt.size >= RESOLVED_LIMIT) resolvedAt.delete(resolvedAt.keys().next().value!);
       resolvedAt.set(id, resolved);
       return resolved;
     })
@@ -212,17 +222,20 @@ export function invalidate(id: string) {
 
 const downloads = new Map<string, Promise<string>>();
 
-/** Keeps the video cache under `config.cacheMaxBytes`, evicting least recently played files first. */
-export async function pruneCache(): Promise<void> {
-  if (!existsSync(config.cacheDir)) return;
-  const names = (await readdir(config.cacheDir)).filter((n) => n.endsWith(".720.mp4"));
-  const files = await Promise.all(
-    names.map(async (n) => {
+let pruning: Promise<void> | null = null;
+async function prune(): Promise<void> {
+  let names: string[];
+  try { names = (await readdir(config.cacheDir)).filter((n) => n.endsWith(".720.mp4")); }
+  catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return; throw err; }
+  const files: { p: string; size: number; used: number }[] = [];
+  for (let i = 0; i < names.length; i += 8) {
+    const batch = await Promise.all(names.slice(i, i + 8).map(async (n) => {
       const p = path.join(config.cacheDir, n);
-      const s = await stat(p);
-      return { p, size: s.size, used: s.mtimeMs };
-    }),
-  );
+      try { const s = await stat(p); return { p, size: s.size, used: s.mtimeMs }; }
+      catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; throw err; }
+    }));
+    files.push(...batch.filter((file): file is NonNullable<typeof file> => file !== null));
+  }
   let total = files.reduce((sum, f) => sum + f.size, 0);
   for (const f of files.sort((a, b) => a.used - b.used)) {
     if (total <= config.cacheMaxBytes) break;
@@ -231,21 +244,21 @@ export async function pruneCache(): Promise<void> {
   }
 }
 
+/** Coalesce pruning and bound metadata reads to eight at a time. */
+export function pruneCache(): Promise<void> {
+  pruning ??= prune().finally(() => { pruning = null; });
+  return pruning;
+}
+
 /** Downloads and merges a 720p H.264 + AAC MP4 into the cache, for HD video playback with seeking. */
 export function downloadHd(id: string): Promise<string> {
   const file = path.join(config.cacheDir, `${id}.720.mp4`);
-  if (existsSync(file)) {
-    // Mark as recently used for cache eviction.
-    const now = new Date();
-    utimes(file, now, now).catch(() => {});
-    return Promise.resolve(file);
-  }
   const inflight = downloads.get(id);
   if (inflight) return inflight;
 
   const tmp = path.join(config.cacheDir, `${id}.720.part.mp4`);
   // Merging video + audio needs FFmpeg; the desktop app fetches it on first use if it isn't there yet.
-  const job = (tools().ffmpeg || !config.binDir ? Promise.resolve() : ensureComponent("ffmpeg"))
+  const fetchFile = () => (tools().ffmpeg || !config.binDir ? Promise.resolve() : ensureComponent("ffmpeg"))
     .then(() => mkdir(config.cacheDir, { recursive: true }))
     .then(() =>
       run(
@@ -270,8 +283,23 @@ export function downloadHd(id: string): Promise<string> {
     .catch(async (err) => {
       await rm(tmp, { force: true });
       throw err;
-    })
-    .finally(() => downloads.delete(id));
+    });
+
+  const job = (async () => {
+    try {
+      await stat(file);
+      const now = new Date();
+      await utimes(file, now, now).catch(() => {});
+      return file;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+    try { return await hdJobs.run(fetchFile); }
+    catch (err) {
+      if (err instanceof QueueError) throw new HttpError(503, msg("serverBusy"), "server_busy");
+      throw err;
+    }
+  })().finally(() => downloads.delete(id));
 
   downloads.set(id, job);
   return job;

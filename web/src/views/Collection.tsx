@@ -1,5 +1,5 @@
 import { DotsThreeIcon, MagnifyingGlassIcon, PauseIcon, PencilSimpleIcon, PlayIcon, ShuffleIcon, TrashIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { Cover, type CoverKind } from "../components/Cover";
 import { NamePlaylistDialog } from "../components/Dialogs";
@@ -17,12 +17,17 @@ import { useLibrary } from "../stores/library";
 interface Props {
   kind: CoverKind;
 }
+const EMPTY_TRACKS: Track[] = [];
 
 /** Playlist, Favorites and History share one layout. */
 export default function Collection({ kind }: Props) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const lib = useLibrary();
+  const playlist = useLibrary((s) => kind === "playlist" ? s.playlists.find((p) => p.id === id) : undefined);
+  const tracks = useLibrary((s) => kind === "favorites" ? s.favorites : kind === "history" ? s.history : playlist?.tracks ?? EMPTY_TRACKS);
+  const libraryStatus = useLibrary((s) => s.status);
+  const renamePlaylist = useLibrary((s) => s.renamePlaylist);
+  const deletePlaylist = useLibrary((s) => s.deletePlaylist);
   const playList = usePlayer((s) => s.playList);
   const toggle = usePlayer((s) => s.toggle);
   const queue = usePlayer((s) => s.queue);
@@ -32,14 +37,14 @@ export default function Collection({ kind }: Props) {
   const [moreOpen, setMoreOpen] = useState(false);
   const t = useT();
 
-  const playlist = kind === "playlist" ? lib.playlists.find((p) => p.id === id) : undefined;
-  const tracks: Track[] = kind === "favorites" ? lib.favorites : kind === "history" ? lib.history : playlist?.tracks ?? [];
   const name = kind === "favorites" ? t.nav.favorites : kind === "history" ? t.nav.recentlyPlayed : playlist?.name ?? "";
   const label =
     kind === "playlist" ? t.collection.labelPlaylist : kind === "favorites" ? t.collection.labelFavorites : t.collection.labelHistory;
+  const trackIds = useMemo(() => new Set(tracks.map((track) => track.id)), [tracks]);
+  const total = useMemo(() => tracks.reduce((sum, track) => sum + (track.duration || 0), 0), [tracks]);
 
   if (kind === "playlist" && !playlist) {
-    if (lib.status !== "ready") return <PageHeader />;
+    if (libraryStatus !== "ready") return <PageHeader />;
     return (
       <>
         <PageHeader />
@@ -57,9 +62,8 @@ export default function Collection({ kind }: Props) {
     );
   }
 
-  const total = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
   // The queue holds exactly these tracks, so this collection is the current playback context.
-  const isThisPlaying = tracks.length > 0 && queue.length === tracks.length && queue.every((t) => tracks.some((x) => x.id === t.id));
+  const isThisPlaying = tracks.length > 0 && queue.length === tracks.length && queue.every((t) => trackIds.has(t.id));
   const playing = isThisPlaying && (status === "playing" || status === "loading");
 
   return (
@@ -115,7 +119,7 @@ export default function Collection({ kind }: Props) {
 
       <div className="px-2 md:px-3">
         {tracks.length > 0 ? (
-          <TrackList tracks={tracks} playlistId={playlist?.id} showAlbum />
+          <TrackList tracks={tracks} playlistId={playlist?.id} listKey={`${kind}:${id ?? ""}`} showAlbum />
         ) : (
           <EmptyState
             icon={<MagnifyingGlassIcon size={28} />}
@@ -170,7 +174,7 @@ export default function Collection({ kind }: Props) {
             action={t.collection.save}
             onClose={() => setRenaming(false)}
             onSubmit={(n) => {
-              void lib.renamePlaylist(playlist.id, n);
+              void renamePlaylist(playlist.id, n);
               setRenaming(false);
             }}
           />
@@ -187,7 +191,7 @@ export default function Collection({ kind }: Props) {
                 type="button"
                 onClick={() => {
                   setConfirmDelete(false);
-                  void lib.deletePlaylist(playlist.id);
+                  void deletePlaylist(playlist.id);
                   navigate(paths.library);
                 }}
                 className="h-11 rounded-full bg-danger px-6 text-sm font-semibold text-white"

@@ -34,7 +34,10 @@ function Entry({ to, name, kind, tracks, sub }: { to: string; name: string; kind
 }
 
 export default function Library() {
-  const { favorites, playlists, history, createPlaylist } = useLibrary();
+  const favorites = useLibrary((s) => s.favorites);
+  const playlists = useLibrary((s) => s.playlists);
+  const history = useLibrary((s) => s.history);
+  const createPlaylist = useLibrary((s) => s.createPlaylist);
   const [creating, setCreating] = useState(false);
   const setSettingsOpen = useUi((s) => s.setSettingsOpen);
   const navigate = useNavigate();

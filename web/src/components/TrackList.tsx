@@ -1,5 +1,7 @@
 import { ClockIcon, DotsThreeIcon, HeartIcon, VideoCameraIcon } from "@phosphor-icons/react";
-import { memo, type MouseEvent } from "react";
+import { memo, useCallback, useMemo, type MouseEvent } from "react";
+import { useListPage } from "../hooks/useListPage";
+import { ListPager } from "./ListPager";
 import { useT } from "../i18n";
 import { cn, formatTime } from "../lib/format";
 import type { Track } from "../lib/types";
@@ -13,15 +15,15 @@ import { Equalizer } from "./Brand";
 interface RowProps {
   track: Track;
   position: number;
-  onPlay: () => void;
+  onPlay: (position: number) => void;
+  isFavorite: boolean;
   playlistId?: string;
   showAlbum: boolean;
 }
 
-const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, showAlbum }: RowProps) {
+const TrackRow = memo(function TrackRow({ track, position, onPlay, isFavorite, playlistId, showAlbum }: RowProps) {
   const isCurrent = usePlayer((s) => selectCurrent(s)?.id === track.id);
-  const isPlaying = usePlayer((s) => s.status === "playing" || s.status === "loading");
-  const isFavorite = useLibrary((s) => s.favorites.some((t) => t.id === track.id));
+  const isPlaying = usePlayer((s) => selectCurrent(s)?.id === track.id && (s.status === "playing" || s.status === "loading"));
   const toggleFavorite = useLibrary((s) => s.toggleFavorite);
   const openMenu = useUi((s) => s.openMenu);
   const t = useT();
@@ -46,7 +48,7 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, s
     >
       <button
         type="button"
-        onClick={onPlay}
+        onClick={() => onPlay(position)}
         aria-label={t.common.playX(track.title)}
         className="absolute inset-0 rounded-xl focus-visible:outline-offset-[-2px]"
       />
@@ -108,6 +110,7 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, s
 });
 
 interface ListProps {
+  listKey?: string;
   tracks: Track[];
   /** Full list to queue when a row is played, if `tracks` is only a preview of it. */
   context?: Track[];
@@ -116,8 +119,13 @@ interface ListProps {
   header?: boolean;
 }
 
-export function TrackList({ tracks, context, playlistId, showAlbum: albumWanted = true, header = true }: ListProps) {
+export function TrackList({ tracks, context, playlistId, listKey, showAlbum: albumWanted = true, header = true }: ListProps) {
   const playList = usePlayer((s) => s.playList);
+  const favorites = useLibrary((s) => s.favorites);
+  const favoriteIds = useMemo(() => new Set(favorites.map((track) => track.id)), [favorites]);
+  const page = useListPage(tracks, listKey);
+  const queue = context ?? tracks;
+  const onPlay = useCallback((position: number) => playList(queue, position), [playList, queue]);
   const t = useT();
   // Pages ask for the album column where it makes sense; Settings can turn it off everywhere.
   const showAlbum = useAppearance((s) => s.albumColumn) && albumWanted;
@@ -143,17 +151,19 @@ export function TrackList({ tracks, context, playlistId, showAlbum: albumWanted 
         </div>
       )}
       <ul className="flex flex-col">
-        {tracks.map((t, i) => (
+        {page.items.map((t, i) => (
           <TrackRow
-            key={`${t.id}-${i}`}
+            key={`${t.id}-${page.start + i}`}
             track={t}
-            position={i}
+            position={page.start + i}
             playlistId={playlistId}
             showAlbum={showAlbum}
-            onPlay={() => playList(context ?? tracks, i)}
+            onPlay={onPlay}
+            isFavorite={favoriteIds.has(t.id)}
           />
         ))}
       </ul>
+      <ListPager {...page} total={tracks.length} />
     </div>
   );
 }
@@ -161,7 +171,7 @@ export function TrackList({ tracks, context, playlistId, showAlbum: albumWanted 
 export function TrackListSkeleton({ rows = 8 }: { rows?: number }) {
   const t = useT();
   return (
-    <ul aria-label={t.common.loading} className="flex flex-col gap-1">
+    <ul data-route-loading aria-label={t.common.loading} className="flex flex-col gap-1">
       {Array.from({ length: rows }, (_, i) => (
         <li key={i} className="flex items-center gap-3 px-2 py-1.5 md:px-3">
           <span className="hidden w-7 md:block" />

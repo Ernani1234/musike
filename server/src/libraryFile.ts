@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
@@ -8,7 +7,14 @@ import type { LibraryStorage } from "./library.js";
 export function fileStorage(dir = config.dataDir): LibraryStorage {
   const file = path.join(dir, "library.json");
   return {
-    read: async () => (existsSync(file) ? readFile(file, "utf8") : null),
+    read: async () => {
+      try {
+        return await readFile(file, "utf8");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw err;
+      }
+    },
     write: async (json) => {
       await mkdir(dir, { recursive: true });
       const tmp = `${file}.tmp`;

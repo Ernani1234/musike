@@ -28,7 +28,7 @@ import { tr, type Text } from "./i18n.js";
 export const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
 /** Machine-readable reason so the web app can offer the right fix (e.g. "update yt-dlp"). */
-export type ErrorCode = "tool_missing" | "maybe_outdated" | "bot_check";
+export type ErrorCode = "tool_missing" | "maybe_outdated" | "bot_check" | "server_busy";
 
 /** An error for the person using the app: its text is translated into each request's language when sent. */
 export class HttpError extends Error {

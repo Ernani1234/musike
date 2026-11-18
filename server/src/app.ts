@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
+import path from "node:path";
 import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
 import { ALBUM_ID, album, ARTIST_ID, artist, GENRE_ID, genre, genreArtists, genres, searchAlbums } from "./browse.js";
@@ -12,7 +13,7 @@ import { langOf, msg, tr } from "./i18n.js";
 import { presentJob, startJob, systemInfo, type Channel } from "./system.js";
 import { refreshTools, type Tools } from "./tools.js";
 import { HttpError, VIDEO_ID } from "./types.js";
-import { downloadHd, pruneCache, resolveStreams } from "./ytdlp.js";
+import { downloadHd, pruneCache, resolveStreams, shutdownMedia } from "./ytdlp.js";
 
 function videoId(params: unknown): string {
   const id = (params as { id?: string }).id ?? "";
@@ -39,10 +40,9 @@ export interface RunningServer {
   close: () => Promise<void>;
 }
 
-/** Builds the Musike HTTP server (API + web app) and starts listening. */
-export async function startServer(opts: StartOptions = {}): Promise<RunningServer> {
+/** Builds API and static routes without opening a socket, for startup and injection tests. */
+export async function createApp() {
   library.useLibraryStorage(fileStorage());
-  const found = await refreshTools();
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "warn" } });
 
   app.setErrorHandler((err, req, reply) => {
@@ -147,6 +147,26 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
 
   app.get("/api/library", () => library.getLibrary());
 
+  app.get("/api/library/tracks", {
+    schema: { querystring: {
+      type: "object",
+      required: ["kind"],
+      additionalProperties: false,
+      properties: {
+        kind: { type: "string", enum: ["favorites", "history", "playlist"] },
+        pid: { type: "string", maxLength: 64 },
+        offset: { type: "integer", minimum: 0, maximum: 1_000_000, default: 0 },
+        limit: { type: "integer", minimum: 1, maximum: 200, default: 100 },
+        q: { type: "string", maxLength: 200, default: "" },
+      },
+    } },
+  }, async (req) => {
+    const { kind, pid = "", offset, limit, q } = req.query as {
+      kind: "favorites" | "history" | "playlist"; pid?: string; offset: number; limit: number; q: string;
+    };
+    return library.getTrackPage(kind, pid, offset, limit, q);
+  });
+
   /** Restores a backup file exported by any Musike instance. Big libraries need more than the 1 MB default body. */
   app.post("/api/library/import", { bodyLimit: 25 * 1024 * 1024 }, async (req) => {
     const body = (req.body ?? {}) as { backup?: { format?: unknown; version?: unknown; library?: unknown }; mode?: unknown };
@@ -207,20 +227,33 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
 
   if (existsSync(config.webDist)) {
     // Wildcard mode resolves files per request, so rebuilding the web app never needs a server restart.
-    await app.register(fastifyStatic, { root: config.webDist });
+    await app.register(fastifyStatic, { root: config.webDist, setHeaders: (res, file) => {
+      const name = path.relative(config.webDist, file).split(path.sep).join("/");
+      if (/^assets\/.+-[\w-]{8,}\.[\w]+$/.test(name)) res.header("cache-control", "public, max-age=31536000, immutable");
+      else res.header("cache-control", "no-cache");
+    } });
     app.setNotFoundHandler((req, reply) => {
       if (req.method === "GET" && !req.url.startsWith("/api/")) return reply.sendFile("index.html");
       reply.code(404).send({ error: tr(langOf(req), msg("routeNotFound")) });
     });
   }
 
+  return app;
+}
+
+/** Builds the Musike HTTP server (API + web app) and starts listening. */
+export async function startServer(opts: StartOptions = {}): Promise<RunningServer> {
+  const found = await refreshTools();
+  const app = await createApp();
   const host = opts.host ?? config.host;
   const preferred = opts.port ?? config.port;
   const port = opts.portFallback ? await freePort(preferred, host) : preferred;
   await app.listen({ port, host });
 
   pruneCache().catch(() => {});
-  return { port, tools: found, close: () => app.close() };
+  const address = app.server.address();
+  return { port: typeof address === "object" && address ? address.port : port, tools: found,
+    close: async () => { shutdownMedia(); await app.close(); } };
 }
 
 /** First free port from `start` (up to 10 tries), so a second copy or a dev server doesn't block launch. */

@@ -3,6 +3,7 @@ import { DEFAULT_CLIENTS, directAudio, fetchRemoteClients, validClients, type Di
 import { msg, tr } from "../../../server/src/i18n";
 import { getLang } from "../i18n";
 import { ApiError } from "../lib/apiTypes";
+import { SessionCache } from "../lib/sessionCache";
 import { config } from "./shims/config";
 import { nativeResolverAvailable, resolveNatively } from "./ytplayer";
 
@@ -20,7 +21,7 @@ const PLATFORM_CLIENTS = ios ? ["IOS", "VISIONOS"] : DEFAULT_CLIENTS;
 const REMOTE_KEY = ios ? "ios" : "clients";
 const CLIENTS_KEY = ios ? "musike:stream-clients-ios" : "musike:stream-clients";
 
-const cache = new Map<string, DirectAudio>();
+const cache = new SessionCache<string, DirectAudio>(200, 3 * 3600_000);
 const inflight = new Map<string, Promise<DirectAudio>>();
 
 function storedClients(): string[] {

@@ -13,12 +13,17 @@ export interface LibraryStorage {
 
 let storage: LibraryStorage | null = null;
 let state: Library | null = null;
+let loading: Promise<Library> | null = null;
 let writeChain: Promise<void> = Promise.resolve();
+let pendingSave: Promise<void> | null = null;
 
 /** Set once at startup, before any request. */
 export function useLibraryStorage(s: LibraryStorage) {
   storage = s;
   state = null;
+  loading = null;
+  writeChain = Promise.resolve();
+  pendingSave = null;
 }
 
 const randomUUID = () => globalThis.crypto.randomUUID();
@@ -26,16 +31,27 @@ const randomUUID = () => globalThis.crypto.randomUUID();
 async function load(): Promise<Library> {
   if (state) return state;
   if (!storage) throw new Error("Library storage not configured");
-  const json = await storage.read();
-  state = json ? (JSON.parse(json) as Library) : { favorites: [], playlists: [], history: [] };
-  return state;
+  // All cold-start requests must share the same state object, including mutations.
+  loading ??= storage.read().then((json) => {
+    state = json ? (JSON.parse(json) as Library) : { favorites: [], playlists: [], history: [] };
+    return state;
+  }).finally(() => { loading = null; });
+  return loading;
 }
 
 /** Serialized writes so concurrent requests never interleave. */
 function persist(): Promise<void> {
-  const snapshot = JSON.stringify(state, null, 2);
-  writeChain = writeChain.then(() => storage!.write(snapshot));
-  return writeChain;
+  if (pendingSave) return pendingSave;
+  const target = storage!;
+  // Mutations in this microtask turn share one durable snapshot rather than serializing the whole library each time.
+  pendingSave = Promise.resolve().then(() => {
+    pendingSave = null;
+    const snapshot = JSON.stringify(state);
+    const write = writeChain.then(() => target.write(snapshot));
+    writeChain = write.catch(() => {});
+    return write;
+  });
+  return pendingSave;
 }
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
@@ -68,6 +84,15 @@ function findPlaylist(lib: Library, pid: string): Playlist {
 
 export async function getLibrary(): Promise<Library> {
   return load();
+}
+
+/** Bounded response for callers browsing a large local collection. Full export remains getLibrary(). */
+export async function getTrackPage(kind: "favorites" | "history" | "playlist", pid: string, offset: number, limit: number, q = "") {
+  const lib = await load();
+  const source = kind === "playlist" ? findPlaylist(lib, pid).tracks : lib[kind];
+  const term = q.trim().toLocaleLowerCase();
+  const matches = term ? source.filter((t) => `${t.title} ${t.artist} ${t.album ?? ""}`.toLocaleLowerCase().includes(term)) : source;
+  return { tracks: matches.slice(offset, offset + limit), total: matches.length, offset, limit, hasMore: offset + limit < matches.length };
 }
 
 export async function addFavorite(track: Track): Promise<Track[]> {
@@ -133,8 +158,12 @@ export async function deletePlaylist(pid: string): Promise<void> {
 export async function addToPlaylist(pid: string, tracks: Track | Track[]): Promise<Playlist> {
   const lib = await load();
   const p = findPlaylist(lib, pid);
+  const seen = new Set(p.tracks.map((t) => t.id));
   for (const track of Array.isArray(tracks) ? tracks : [tracks]) {
-    if (!p.tracks.some((t) => t.id === track.id)) p.tracks.push(track);
+    if (!seen.has(track.id)) {
+      seen.add(track.id);
+      p.tracks.push(track);
+    }
   }
   p.updatedAt = Date.now();
   await persist();
@@ -223,10 +252,15 @@ export async function importLibrary(input: unknown, mode: "merge" | "replace"): 
   lib.favorites = fav.list;
   result.favoritesAdded = fav.added;
 
+  const byId = new Map(lib.playlists.map((p) => [p.id, p]));
+  const byName = new Map<string, Playlist>();
+  for (const p of lib.playlists) {
+    const name = p.name.toLocaleLowerCase("pt-BR");
+    if (!byName.has(name)) byName.set(name, p);
+  }
   for (const p of incoming.playlists) {
     const match =
-      lib.playlists.find((x) => x.id === p.id) ??
-      lib.playlists.find((x) => x.name.toLocaleLowerCase("pt-BR") === p.name.toLocaleLowerCase("pt-BR"));
+      byId.get(p.id) ?? byName.get(p.name.toLocaleLowerCase("pt-BR"));
     if (match) {
       const merged = union(match.tracks, p.tracks);
       if (!merged.added) continue; // already had every track: nothing changed
@@ -236,6 +270,8 @@ export async function importLibrary(input: unknown, mode: "merge" | "replace"): 
       result.playlistsMerged++;
     } else {
       lib.playlists.push(p);
+      byId.set(p.id, p);
+      byName.set(p.name.toLocaleLowerCase("pt-BR"), p);
       result.tracksAdded += p.tracks.length;
       result.playlistsAdded++;
     }

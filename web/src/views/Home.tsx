@@ -52,7 +52,10 @@ function RecentCard({ track, onPlay }: { track: Track; onPlay: () => void }) {
 }
 
 export default function Home() {
-  const { favorites, playlists, history, status } = useLibrary();
+  const favorites = useLibrary((s) => s.favorites);
+  const playlists = useLibrary((s) => s.playlists);
+  const history = useLibrary((s) => s.history);
+  const status = useLibrary((s) => s.status);
   const playList = usePlayer((s) => s.playList);
   const navigate = useNavigate();
   const t = useT();

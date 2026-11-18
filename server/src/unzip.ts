@@ -1,6 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { inflateRawSync } from "node:zlib";
+import { promisify } from "node:util";
+import { inflateRaw } from "node:zlib";
+
+const inflate = promisify(inflateRaw);
 
 const EOCD = 0x06054b50;
 const CENTRAL = 0x02014b50;
@@ -69,7 +72,7 @@ export async function unzip(file: string, outDir: string): Promise<void> {
     const data = zip.subarray(start, start + compressed);
     let content: Buffer;
     if (method === 0) content = data;
-    else if (method === 8) content = inflateRawSync(data);
+    else if (method === 8) content = await inflate(data);
     else throw new Error(`Unsupported zip compression (${method})`);
     if (content.length !== size) throw new Error(`Damaged zip entry: ${name}`);
 

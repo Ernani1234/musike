@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
-import { Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } from "react-router";
+import { lazy, Suspense, useEffect, useRef } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
 import { AddToPlaylistDialog, ShortcutsDialog } from "./components/Dialogs";
 import { MiniPlayer, TabBar } from "./components/MobileChrome";
 import { NowPlayingSheet, PanelDrawer, SidePanel } from "./components/NowPlaying";
@@ -13,6 +13,8 @@ import { TrackMenu } from "./components/TrackMenu";
 import { FloatingVideo, Theater } from "./components/Video";
 import { MD, useMediaQuery } from "./hooks/useMediaQuery";
 import { useShortcuts } from "./hooks/useShortcuts";
+import { useRouteScroll } from "./hooks/useRouteScroll";
+import { TrackListSkeleton } from "./components/TrackList";
 import { getT } from "./i18n";
 import { capabilities } from "./lib/api";
 import { cn } from "./lib/format";
@@ -21,14 +23,14 @@ import { usePlayer } from "./player/player";
 import { useLibrary } from "./stores/library";
 import { openSettings, useSystem } from "./stores/system";
 import { toast, useUi } from "./stores/ui";
-import Album from "./views/Album";
-import Artist from "./views/Artist";
-import BatchSearch from "./views/BatchSearch";
-import Collection from "./views/Collection";
-import Genre from "./views/Genre";
-import Home from "./views/Home";
-import Library from "./views/Library";
-import Search from "./views/Search";
+const Album = lazy(() => import("./views/Album"));
+const Artist = lazy(() => import("./views/Artist"));
+const BatchSearch = lazy(() => import("./views/BatchSearch"));
+const Collection = lazy(() => import("./views/Collection"));
+const Genre = lazy(() => import("./views/Genre"));
+const Home = lazy(() => import("./views/Home"));
+const Library = lazy(() => import("./views/Library"));
+const Search = lazy(() => import("./views/Search"));
 
 const SHEET_HASH = `#${NOW_PLAYING_HASH}`;
 
@@ -36,13 +38,13 @@ export default function App() {
   const location = useLocation();
   const legacy = legacyRedirect(location.pathname, location.search, location.hash);
   const navigate = useNavigate();
-  const navigationType = useNavigationType();
   const isMd = useMediaQuery(MD);
   const panelOpen = useUi((s) => s.panelOpen);
   const hasTrack = usePlayer((s) => s.queue.length > 0);
   const loadLibrary = useLibrary((s) => s.load);
   const loadSystem = useSystem((s) => s.load);
   const main = useRef<HTMLElement>(null);
+  useRouteScroll(main);
 
   useShortcuts();
 
@@ -76,27 +78,6 @@ export default function App() {
     return () => clearTimeout(t);
   }, [loadSystem]);
 
-  // Where each history entry was scrolled to, so Back returns to the same spot (say, deep in a genre's artists).
-  const scrollMemo = useRef(new Map<string, number>());
-  const entryKey = useRef(location.key);
-  useEffect(() => {
-    const el = main.current;
-    if (!el) return;
-    const onScroll = () => scrollMemo.current.set(entryKey.current, el.scrollTop);
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, []);
-
-  // New page, back to the top; Back and Forward return to where it was (the sheet hash is not a page change).
-  // A layout effect, so the scroll the old page's removal causes is already filed under the new entry.
-  useLayoutEffect(() => {
-    entryKey.current = location.key;
-    const saved = navigationType === "POP" ? scrollMemo.current.get(location.key) : undefined;
-    main.current?.scrollTo({ top: 0 });
-    // Pages that keep their data (genre, artist) render in full right away, so one frame is enough.
-    if (saved) requestAnimationFrame(() => main.current?.scrollTo({ top: saved }));
-  }, [location.pathname]);
-
   const sheetOpen = !isMd && location.hash === SHEET_HASH;
   const closeSheet = () => {
     // Pop the history entry the sheet pushed, so Back and the close button behave the same.
@@ -118,6 +99,8 @@ export default function App() {
             "md:pb-0",
           )}
         >
+          <div>
+          <Suspense fallback={<TrackListSkeleton />}>
           {legacy ? (
             <Navigate to={legacy} replace />
           ) : (
@@ -135,6 +118,9 @@ export default function App() {
               <Route path="*" element={<Home />} />
             </Routes>
           )}
+          <span hidden data-route-ready />
+          </Suspense>
+          </div>
         </main>
         {panelOpen && hasTrack && <SidePanel />}
       </div>

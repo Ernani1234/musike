@@ -21,6 +21,7 @@ import { cn, formatTime } from "../lib/format";
 import type { Track } from "../lib/types";
 import { usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
+import { trackIds } from "../lib/trackIds";
 import { IconButton, PlayDisc } from "./IconButton";
 import { Slider } from "./Slider";
 
@@ -143,7 +144,7 @@ export function Volume({ className }: { className?: string }) {
 }
 
 export function FavoriteButton({ track, size = "md" }: { track: Track | null; size?: "sm" | "md" | "lg" }) {
-  const isFavorite = useLibrary((s) => !!track && s.favorites.some((t) => t.id === track.id));
+  const isFavorite = useLibrary((s) => !!track && trackIds(s.favorites).has(track.id));
   const toggle = useLibrary((s) => s.toggleFavorite);
   const t = useT();
   return (

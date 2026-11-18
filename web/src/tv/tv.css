@@ -1,8 +1,8 @@
 /* Android TV (10-foot) tweaks. Loaded only when html[data-tv="1"] is set. */
 
 html[data-tv="1"] {
-  --tv-ring: #b6f36a;
-  --tv-ring-soft: rgba(182, 243, 106, 0.35);
+  --tv-ring: var(--accent);
+  --tv-ring-soft: color-mix(in srgb, var(--accent) 35%, transparent);
   font-size: 130%;
   scroll-behavior: smooth;
 }
@@ -24,7 +24,7 @@ html[data-tv="1"] :focus {
   z-index: 3;
 }
 
-html[data-tv="1"] *:hover {
+html[data-tv="1"] *:hover:not(:focus) {
   transform: none !important;
 }
 
