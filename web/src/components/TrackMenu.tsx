@@ -1,5 +1,6 @@
 import {
   ArrowSquareOutIcon,
+  CheckSquareIcon,
   HeartIcon,
   ListPlusIcon,
   PlayIcon,
@@ -74,6 +75,14 @@ export function TrackMenu() {
 
   const content = menu && (
     <div role="menu" aria-label={t.trackMenu.actionsFor(menu.track.title)} data-escape-closes className="flex flex-col">
+      {menu.select && (
+        <>
+          <Item icon={<CheckSquareIcon size={18} weight={menu.select.selected ? "fill" : "regular"} />} onClick={run(menu.select.toggle)}>
+            {menu.select.selected ? t.trackMenu.deselect : t.trackMenu.select}
+          </Item>
+          <div className="mx-3 my-1 h-px bg-line" />
+        </>
+      )}
       <Item icon={<PlayIcon size={18} />} onClick={run(() => usePlayer.getState().playTrack(menu.track))}>
         {t.trackMenu.playNow}
       </Item>

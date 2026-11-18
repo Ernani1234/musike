@@ -13,3 +13,5 @@ export function useMediaQuery(query: string): boolean {
 
 export const MD = "(min-width: 768px)";
 export const XL = "(min-width: 1280px)";
+/** A touch screen (the phone app, phone browsers) rather than a mouse: long presses instead of right clicks. */
+export const TOUCH = "(hover: none)";

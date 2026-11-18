@@ -6,6 +6,7 @@ import { NamePlaylistDialog } from "../components/Dialogs";
 import { IconButton, PlayDisc } from "../components/IconButton";
 import { Modal } from "../components/Modal";
 import { EmptyState, PageHeader } from "../components/Page";
+import { Action } from "../components/Selection";
 import { TrackList } from "../components/TrackList";
 import { useT } from "../i18n";
 import { shuffled } from "../lib/format";
@@ -115,7 +116,30 @@ export default function Collection({ kind }: Props) {
 
       <div className="px-2 md:px-3">
         {tracks.length > 0 ? (
-          <TrackList tracks={tracks} playlistId={playlist?.id} showAlbum />
+          <TrackList
+            key={kind === "playlist" ? playlist?.id : kind}
+            tracks={tracks}
+            playlistId={playlist?.id}
+            showAlbum
+            selection={{
+              noFavorite: kind === "favorites",
+              extra:
+                kind === "history"
+                  ? undefined
+                  : (chosen, done) => (
+                      <Action
+                        icon={<TrashIcon size={16} />}
+                        label={t.selection.remove}
+                        onClick={() => {
+                          const ids = chosen.map((x) => x.id);
+                          done();
+                          if (kind === "favorites") void lib.removeFavorites(ids);
+                          else if (playlist) void lib.removeManyFromPlaylist(playlist.id, ids);
+                        }}
+                      />
+                    ),
+            }}
+          />
         ) : (
           <EmptyState
             icon={<MagnifyingGlassIcon size={28} />}

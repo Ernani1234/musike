@@ -1,5 +1,6 @@
 import { CheckIcon, HeartIcon, PlayIcon, PlaylistIcon, VideoCameraIcon } from "@phosphor-icons/react";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { TOUCH, useMediaQuery } from "../hooks/useMediaQuery";
 import { useT } from "../i18n";
 import { cn, formatTime } from "../lib/format";
 import type { Track } from "../lib/types";
@@ -8,6 +9,13 @@ import { useLibrary } from "../stores/library";
 import { useUi } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { Equalizer } from "./Brand";
+
+/** Was this right click or long press on `el`? (On a phone's long press the event carries the finger's position.) */
+export function pressedOn(el: Element | null, e: MouseEvent) {
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+}
 
 export function Check({ on }: { on: boolean }) {
   return (
@@ -22,7 +30,7 @@ export function Check({ on }: { on: boolean }) {
   );
 }
 
-function Action({
+export function Action({
   icon,
   label,
   phoneLabel,
@@ -83,6 +91,8 @@ export function SelectionBar({
   onToggleAll,
   label,
   className,
+  extra,
+  noFavorite,
 }: {
   chosen: Track[];
   all: Track[];
@@ -90,6 +100,10 @@ export function SelectionBar({
   onToggleAll: () => void;
   label: ReactNode;
   className?: string;
+  /** More actions for the picked tracks (e.g. remove them from this playlist). */
+  extra?: ReactNode;
+  /** No "Favorite" (on the Favorites page itself). */
+  noFavorite?: boolean;
 }) {
   const playList = usePlayer((s) => s.playList);
   const addFavorites = useLibrary((s) => s.addFavorites);
@@ -125,16 +139,25 @@ export function SelectionBar({
           disabled={!toPlay.length}
           onClick={() => playList(toPlay, 0)}
         />
-        <Action icon={<HeartIcon size={16} />} label={t.common.favorite} disabled={!chosen.length} onClick={() => void addFavorites(chosen)} />
-        <Action icon={<PlaylistIcon size={16} />} label={t.common.playlist} disabled={!chosen.length} onClick={() => openAddToPlaylist(chosen)} />
+        {chosen.length > 0 && (
+          <>
+            {!noFavorite && <Action icon={<HeartIcon size={16} />} label={t.common.favorite} onClick={() => void addFavorites(chosen)} />}
+            <Action icon={<PlaylistIcon size={16} />} label={t.common.playlist} onClick={() => openAddToPlaylist(chosen)} />
+            {extra}
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 /**
- * A track row with a checkbox. The artwork plays; the title toggles the selection,
- * so picking many songs is a run of taps on the text.
+ * A track row you can pick, Spotify-style: with nothing selected, tapping the row plays the track; while picking,
+ * tapping rows picks more. The artwork always plays on a tap.
+ *
+ * With a mouse the checkbox is always there, and a right click picks. On a touch screen there are no checkboxes
+ * until something is picked: a long press on the artwork picks the track, and so does "Select" in the menu that a
+ * long press anywhere else opens; the checkboxes go away again when nothing is picked.
  */
 export function SelectableRow({
   track,
@@ -144,9 +167,18 @@ export function SelectableRow({
   position,
   note,
   trailing,
+  dimmed = !selected,
+  selecting = false,
+  checks = selecting,
 }: {
   track: Track;
   selected: boolean;
+  /** Faded: left out of the selection. By default when not selected; lists that start empty fade only while picking. */
+  dimmed?: boolean;
+  /** Something is selected: taps on the row pick instead of playing. */
+  selecting?: boolean;
+  /** On a touch screen, show the checkboxes: while picking, by default; always where the list starts out picked. */
+  checks?: boolean;
   onToggle: () => void;
   onPlay: () => void;
   position?: number;
@@ -157,26 +189,45 @@ export function SelectableRow({
   const isCurrent = usePlayer((s) => selectCurrent(s)?.id === track.id);
   const isPlaying = usePlayer((s) => s.status === "playing" || s.status === "loading");
   const isFavorite = useLibrary((s) => s.favorites.some((f) => f.id === track.id));
+  const openMenu = useUi((s) => s.openMenu);
+  const art = useRef<HTMLButtonElement>(null);
+  const touch = useMediaQuery(TOUCH);
   const t = useT();
+  const play = onPlay;
 
   return (
-    <div className="group flex items-center gap-3 rounded-xl px-2 py-1.5 transition-colors hover:bg-surface-2 md:px-3">
-      <button
-        type="button"
-        role="checkbox"
-        aria-checked={selected}
-        aria-label={t.selection.select(track.title)}
-        onClick={onToggle}
-        className="-m-2 p-2"
-      >
-        <Check on={selected} />
-      </button>
+    <div
+      onContextMenu={(e) => {
+        e.preventDefault();
+        if (!touch || pressedOn(art.current, e)) onToggle();
+        else openMenu({ track, x: e.clientX, y: e.clientY, select: { selected, toggle: onToggle } });
+      }}
+      className="group flex items-center gap-3 rounded-xl px-2 py-1.5 transition-colors hover:bg-surface-2 md:px-3"
+    >
+      {(checks || !touch) && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selected}
+          aria-label={t.selection.select(track.title)}
+          onClick={onToggle}
+          className="-my-1.5 -ml-2 flex h-14 w-11 shrink-0 items-center justify-center"
+        >
+          <Check on={selected} />
+        </button>
+      )}
 
       {position !== undefined && (
         <span className="hidden w-6 shrink-0 text-center font-mono text-[13px] text-fg-3 tabular-nums md:block">{position}</span>
       )}
 
-      <button type="button" onClick={onPlay} aria-label={t.common.playX(track.title)} className="group/art relative shrink-0">
+      <button
+        ref={art}
+        type="button"
+        onClick={play}
+        aria-label={t.common.playX(track.title)}
+        className="group/art relative shrink-0 select-none [-webkit-touch-callout:none]"
+      >
         <Artwork src={track.thumb} className="size-11 rounded-[10px]" />
         <span
           className={cn(
@@ -188,7 +239,12 @@ export function SelectableRow({
         </span>
       </button>
 
-      <button type="button" onClick={onToggle} className={cn("min-w-0 flex-1 text-left", !selected && "opacity-60")}>
+      <button
+        type="button"
+        onClick={selecting ? onToggle : play}
+        tabIndex={-1}
+        className={cn("min-w-0 flex-1 select-none text-left [-webkit-touch-callout:none]", dimmed && "opacity-60")}
+      >
         <span className={cn("block truncate text-[15px] leading-tight font-medium", isCurrent && "text-accent-text")}>{track.title}</span>
         <span className="mt-0.5 flex items-center gap-1.5 text-[13px] text-fg-2">
           {track.kind === "video" && <VideoCameraIcon size={13} className="shrink-0 text-fg-3" aria-label={t.common.video} />}
@@ -241,6 +297,8 @@ export function SelectableTrackList({ tracks, numbered }: { tracks: Track[]; num
               track={t}
               position={numbered ? i + 1 : undefined}
               selected={selected.has(t.id)}
+              dimmed={chosen.length > 0 && !selected.has(t.id)}
+              selecting={chosen.length > 0}
               onToggle={() => toggle(t.id)}
               onPlay={() => playList(tracks, i)}
             />
