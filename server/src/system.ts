@@ -185,6 +185,33 @@ export function startJob(channel: Channel) {
   return current;
 }
 
+/**
+ * YTDLP_CHANNEL: yt-dlp on that channel, updated now and then every `everyMs`. Logs only what changed or failed.
+ * Returns a function that stops it.
+ */
+export function keepChannel(channel: Channel, everyMs = 24 * 60 * 60_000, firstDelayMs = 5_000): () => void {
+  const run = async () => {
+    try {
+      // Known before the job starts, so an update that changes nothing logs nothing.
+      if (version === undefined || (version === null && tools().ytdlp)) version = await readVersion();
+      const current = startJob(channel);
+      while (current.status === "running") await new Promise((r) => setTimeout(r, 1000));
+      if (current.status === "error") console.warn(`  yt-dlp: couldn't update to ${channel}: ${tr("en", current.message)}`);
+      else if (current.from !== current.to) console.log(`  yt-dlp: ${current.from ?? "none"} -> ${current.to} (${channel})`);
+    } catch (err) {
+      console.warn(`  yt-dlp: couldn't update to ${channel}: ${err instanceof HttpError ? tr("en", err.text) : (err as Error).message}`);
+    }
+  };
+  const first = setTimeout(run, firstDelayMs);
+  const daily = setInterval(run, everyMs);
+  first.unref();
+  daily.unref();
+  return () => {
+    clearTimeout(first);
+    clearInterval(daily);
+  };
+}
+
 const wingetArgs = (verb: "install" | "upgrade") => [
   verb,
   "--id",

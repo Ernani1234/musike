@@ -9,7 +9,7 @@ import { fileStorage } from "./libraryFile.js";
 import { findVideoFor, radio, search, suggestions } from "./search.js";
 import { proxyStream, serveFile } from "./stream.js";
 import { langOf, msg, tr } from "./i18n.js";
-import { presentJob, startJob, systemInfo, type Channel } from "./system.js";
+import { keepChannel, presentJob, startJob, systemInfo, type Channel } from "./system.js";
 import { refreshTools, type Tools } from "./tools.js";
 import { HttpError, VIDEO_ID } from "./types.js";
 import { downloadHd, pruneCache, resolveStreams } from "./ytdlp.js";
@@ -220,7 +220,15 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   await app.listen({ port, host });
 
   pruneCache().catch(() => {});
-  return { port, tools: found, close: () => app.close() };
+  const stopChannel = config.ytdlpChannel ? keepChannel(config.ytdlpChannel) : () => {};
+  return {
+    port,
+    tools: found,
+    close: async () => {
+      stopChannel();
+      await app.close();
+    },
+  };
 }
 
 /** First free port from `start` (up to 10 tries), so a second copy or a dev server doesn't block launch. */

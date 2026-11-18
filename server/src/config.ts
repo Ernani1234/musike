@@ -9,6 +9,14 @@ export const config = {
   host: process.env.HOST ?? "0.0.0.0",
   /** Explicit yt-dlp executable. When unset it is located automatically (see tools.ts). */
   ytdlpPath: process.env.YTDLP_PATH || null,
+  /**
+   * YTDLP_CHANNEL=stable|nightly: keep yt-dlp on that channel and up to date, at start and once a day (a recreated
+   * container comes back with the image's yt-dlp). Unset: yt-dlp changes only from Settings.
+   */
+  ytdlpChannel: (["stable", "nightly"].includes(process.env.YTDLP_CHANNEL ?? "") ? process.env.YTDLP_CHANNEL : null) as
+    | "stable"
+    | "nightly"
+    | null,
   // Extra yt-dlp flags, e.g. YTDLP_EXTRA_ARGS="--cookies-from-browser firefox"
   ytdlpExtraArgs: (process.env.YTDLP_EXTRA_ARGS ?? "").split(" ").filter(Boolean),
   dataDir: process.env.MUSIKE_DATA_DIR ?? path.join(root, "data"),
