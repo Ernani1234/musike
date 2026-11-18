@@ -14,7 +14,7 @@ console.log(`\n  Musike is running`);
 console.log(`  Local:   http://localhost:${port}`);
 for (const url of lan) console.log(`  Network: ${url}`);
 if (!existsSync(config.webDist)) console.log(`  (web app not built: run "pnpm build" or use "pnpm dev")`);
-console.log(`  yt-dlp:  ${tools.ytdlp ?? "NOT FOUND (install it from Musike's Settings)"}`);
+console.log(`  yt-dlp:  ${tools.ytdlp ?? "NOT FOUND (install it from Musike's Settings)"}${config.ytdlpChannel ? ` (kept on ${config.ytdlpChannel})` : ""}`);
 if (!tools.deno) console.log(`  Deno:    not found (YouTube may fail without it)`);
 if (!tools.ffmpeg) console.log(`  FFmpeg:  not found (HD video unavailable)`);
 console.log(`  Data:    ${path.relative(process.cwd(), config.dataDir) || config.dataDir}\n`);

@@ -262,7 +262,7 @@ docker compose up -d   # then open http://<that machine>:4180
 Or with plain Docker: `docker run -d -p 4180:4180 -v musike-data:/data -v musike-cache:/cache ghcr.io/ernani1234/musike`. To build the image from source instead: `docker build -t musike .`
 
 - A new image is published for every release; `docker compose pull && docker compose up -d` updates it. The library stays in the `/data` volume.
-- yt-dlp can also be updated from **Settings** without a new image (until the container is recreated).
+- yt-dlp can also be updated from **Settings** without a new image (until the container is recreated). To always have a channel, set `YTDLP_CHANNEL=nightly` (or `stable`): Musike updates yt-dlp to it at start and once a day, so a recreated container doesn't fall back to the image's version.
 - All the [environment variables](#configuration) work, e.g. `YTDLP_EXTRA_ARGS="--cookies /data/cookies.txt"` for YouTube's bot checks.
 
 > **Run it at home, not on a VPS:** YouTube blocks datacenter IPs ("Sign in to confirm you're not a bot"). A home server uses your residential IP.
@@ -352,6 +352,7 @@ Server environment variables (all optional):
 | `PORT` | `4180` | HTTP port |
 | `HOST` | `0.0.0.0` | Use `127.0.0.1` to accept only this computer |
 | `YTDLP_PATH` | automatic | Forces a specific yt-dlp executable |
+| `YTDLP_CHANNEL` | | `nightly` or `stable`: keeps yt-dlp on that channel and up to date (at start and once a day). Unset: only Settings changes it |
 | `YTDLP_EXTRA_ARGS` | | Extra flags, e.g. `--cookies-from-browser firefox` |
 | `MUSIKE_DATA_DIR` | `server/data` (`/data` in Docker) | Where `library.json` lives |
 | `MUSIKE_CACHE_DIR` | `server/cache` (`/cache` in Docker) | Downloaded HD videos |
