@@ -395,7 +395,16 @@ const albumPage = cached(60 * MINUTE, async (key): Promise<AlbumPage> => {
 
 export const album = (id: string, lang: Lang) => albumPage(keyOf(lang, id));
 
+/**
+ * The albums in a search response, from every shelf, each once. The album shelf isn't always the first section:
+ * a "did you mean" or "showing results for" box, or a top-result card, can come before it.
+ */
+export function albumResults(result: any): AlbumCard[] {
+  const seen = new Set<string>();
+  const items = (Array.isArray(result?.contents) ? result.contents : []).flatMap(itemsOf);
+  return albumCards(items).filter((a) => !seen.has(a.id) && !!seen.add(a.id));
+}
+
 export async function searchAlbums(query: string, lang: Lang): Promise<AlbumCard[]> {
-  const result: any = await withClient((yt) => yt.music.search(query, { type: "album" }), lang);
-  return albumCards(itemsOf(result.contents?.[0]));
+  return albumResults(await withClient((yt) => yt.music.search(query, { type: "album" }), lang));
 }
