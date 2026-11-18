@@ -353,6 +353,7 @@ Server environment variables (all optional):
 | `HOST` | `0.0.0.0` | Use `127.0.0.1` to accept only this computer |
 | `YTDLP_PATH` | automatic | Forces a specific yt-dlp executable |
 | `YTDLP_EXTRA_ARGS` | | Extra flags, e.g. `--cookies-from-browser firefox` |
+| `MUSIKE_DIRECT_AUDIO` | | `first`: start audio straight from YouTube's API (about half a second, as on Android), with yt-dlp as the fallback. By default yt-dlp comes first |
 | `MUSIKE_DATA_DIR` | `server/data` (`/data` in Docker) | Where `library.json` lives |
 | `MUSIKE_CACHE_DIR` | `server/cache` (`/cache` in Docker) | Downloaded HD videos |
 | `MUSIKE_CACHE_MAX_MB` | `2048` | Video cache limit (least recently played go first) |
