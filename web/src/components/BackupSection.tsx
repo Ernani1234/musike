@@ -1,5 +1,5 @@
 import { ArrowsMergeIcon, DownloadSimpleIcon, SwapIcon, UploadSimpleIcon } from "@phosphor-icons/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createBackup, downloadBackup, readBackup, restoreBackup, summarize, type Backup } from "../lib/backup";
 import { useT } from "../i18n";
 import { cn } from "../lib/format";
@@ -15,7 +15,17 @@ export function BackupSection() {
   const [withSettings, setWithSettings] = useState(true);
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
+  const card = useRef<HTMLDivElement>(null);
   const t = useT();
+
+  // The file's summary and the Import button open below Export/Import, often out of view in Settings: bring them
+  // into view, or the import looks like it did nothing.
+  useEffect(() => {
+    if (pending) card.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [pending]);
+  useEffect(() => {
+    if (confirmReplace) card.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [confirmReplace]);
 
   const onExport = async () => {
     setBusy("export");
@@ -91,7 +101,7 @@ export function BackupSection() {
       </div>
 
       {pending && s && (
-        <div className="flex flex-col gap-3 rounded-[16px] bg-surface-1 p-4 ring-1 ring-line">
+        <div ref={card} className="flex scroll-mt-2 flex-col gap-3 rounded-[16px] bg-surface-1 p-4 ring-1 ring-line">
           <div>
             <p className="truncate text-sm font-medium" title={pending.file}>
               {pending.file}
