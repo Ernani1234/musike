@@ -22,6 +22,7 @@ below includes reproduction steps and captured evidence.
 | BUG-011 | Phone number normalization (E.164, +60 default, idempotent backfill) | RESOLVED in source — canonical +60 and backed-up migration | 2026-11-19 |
 | BUG-012 | Codex deliverable: Cloudflare + tunnel optimization audit prompt for Hermes | DELIVERED — audit prompt with approval/rollback gates | 2026-11-19 |
 | BUG-013 | Dead active output tab permanently deadlocks device sync — no device can play; dead tabs stay "online" | FIXED in source (d2a0eb4) — deployed to prod 2026-11-19; user acceptance pending | 2026-11-19 |
+| BUG-014 | Discord presence sidecar never connected: missing CA trust store (BoringSSL TLS failure to gaming-sdk.com) | FIXED in source (979a934) — deployed to prod 2026-11-19; user acceptance confirmed | 2026-11-19 |
 ---
 
 > Current dispositions are in the index and the dated follow-up below. Original reports retain their historical wording/status as evidence. “Resolved in source” does not certify a live provider, tunnel or physical-device acceptance test.
@@ -582,3 +583,25 @@ Added a `reconcile()` pass in `playbackSync.ts`, invoked on every sync `act()` a
 ### REVIEW REQUESTED (ChatGPT revisions)
 
 Please review the patch before the next release package: **commit `d2a0eb4` — `server/src/playbackSync.ts`** (original backed up at `/tmp/playbackSync.ts.bak` on the PCM host), plus regression tests in `10b23d3` (`server/test/playback-sync-deadlock.test.ts`). Focus points: the 45s dead-active / 180s prune / 30s transfer-timeout thresholds, reconcile running under the per-user account lock, and epoch/seq reset behaviour when ownership is handed over.
+
+
+## BUG-014 — Discord presence sidecar stuck at Connecting: runtime image had no CA certificate trust store
+
+**Found:** 2026-11-19 (Hermes). **Symptom:** sidecar workers accepted the access token (`UpdateToken` -> `Connect()`) but every session hung at SDK `status:1` (Connecting) for ~60s, then failed with `status:0, error:1` (Error::ConnectionFailed). No rich presence published.
+
+**Diagnosis chain (why it looked like nothing):**
+1. `worker.cpp` status callback initially discarded the Error enum — first fix (`fce2d2d`) emitted full status/error events, revealing `status:1 error:0` (stall inside the SDK).
+2. All external network probes PASSED from the same container: DNS A records, TLS to `gateway.discord.gg:443`, `https://discord.com/api/v10/gateway`, even `https://gaming-sdk.com/api/v9/gateway` via Node — HTTP 200. Network was NOT the problem at the transport level.
+3. Enabled the SDK's own file logging: `client->SetLogDir("/tmp/discord-logs", LoggingSeverity::Verbose)` (`b93d6ae`, `a1592b4` surfaced SetLogDir's return). Two quirks: the SDK concatenates dir+"discord.log" WITHOUT a separator (file lands at `/tmp/discord-logsdiscord.log` — `find /tmp -name '*.log'`, never just `ls` the dir), and the file flushes only on failure/exit, so an empty dir during Connecting is NOT evidence SetLogDir failed.
+4. SDK log on failure showed the real error: `TLS Handshake Error ... handshake.cc:392 268435581` against `https://gaming-sdk.com/api/v9/...` followed by request timeouts — the SDK's bundled **BoringSSL** verifies against the SYSTEM trust store, and the runtime image (`node:22-bookworm-slim` + manual apt layer) had NO `/etc/ssl/certs` at all. Node working did not prove CAs exist: Node bundles its own Mozilla store.
+
+**Fix:** added `ca-certificates` to the runtime `apt-get install` list in `services/discord-presence/Dockerfile` (commit `979a934`). After the rebuild/redeploy the SDK connects and presence publishes: worker logs show continuous `{"event":"discord.sdk.updated","ready":true,"published":true}` every ~5s; user confirmed rich presence live on Discord.
+
+**Not a bug / benign residual:** repeated `RPC Connect error: -2` ("failed to receive READY payload") in the SDK log is the SDK attempting to reach a LOCAL Discord desktop client over IPC — absent in a container; rich presence rides the gateway and is unaffected.
+
+**Key lesson:** a passing network probe from Node does not validate the system trust store for BoringSSL-based binaries. Check `docker exec <ctr> ls /etc/ssl/certs | wc -l` (0 = missing) before suspecting TLS/network/Discord-side issues.
+
+REVIEW REQUESTED — focus points:
+- `services/discord-presence/Dockerfile`: ca-certificates added to BOTH stages (builder + runtime); any risk the apt layer bloats or that stage 1 lacked it matters? (Stage 1 also patched — confirm both are needed/consistent.)
+- worker.cpp emits `discord.sdk.logdir` `{ok}` and full status events with error names — confirm no token/secret or PII can leak into these log lines (applicationId and status codes only).
+- The two SDK log quirks (dir+filename concatenation, flush-on-failure) make future diagnosis non-obvious — consider a comment or doc note in worker.cpp.
