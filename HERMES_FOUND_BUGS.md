@@ -15,6 +15,7 @@ below includes reproduction steps and captured evidence.
 | BUG-004 | Radio sometimes stalls advancing to next song or errors server unreachable | OPEN (Codex) | 2026-11-18 |
 | BUG-005 | yt-dlp wrapper needs whole-file fix beyond BUG-001 mitigation | OPEN (Codex) | 2026-11-18 |
 
+| BUG-006 | Cloudflare Tunnel Optimization Findings for Codex Evaluation | OPEN (Codex) | 2026-11-19 |
 ---
 
 ## BUG-001 — yt-dlp stream URLs expire ~3-4s after issuance; proxied streams fail with 403
@@ -190,4 +191,45 @@ Regression evidence: fixtures cover primary refusal followed by fallback byte ca
 | Date | Actor | Change |
 |------|-------|--------|
 | 2026-11-18 | Hermes agent | Report created (OPEN) per Azan's request. Fix delegated to Codex. |
+
+
+## Cloudflare Tunnel Optimization Findings — for Codex Evaluation
+
+**Date:** 2026-11-19  
+**Found:** Hermes agent, while diagnosing musike PWA next-track failure on Android lock screen  
+**Scope:** Musike PWA behind Cloudflare tunnel; deployment: Chrome PWA → Cloudflare tunnel → musike Docker container on gcp-docker-sg (100.88.13.4)
+
+### Observed behaviour
+- Musike PWA (Chrome Add-to-Home-Screen, Samsung A07, Android 16, OneUI 8.5) plays current song fine when device is locked (screen off)
+- On song completion, next-track transition fails with "cannot connecting to server" error
+- Manual next-track or keeping device unlocked works normally
+- Error does NOT occur when device remains unlocked
+- Cloudflare tunnel may idle-drop or WAF-geo-block the re-fetch request when app wakes from lock screen
+
+### Cloudflare tunnel configuration
+- Tunnel token present in `/opt/data/home/.cloudflared/` (credentials [REDACTED])
+- Workers package at `/opt/data/synturn-cloudflare-workers/`
+- Tunnel routes musike domain to Docker container
+- `machan.live` WAF geo-blocks non-MY IPs — CF‑originated probes must be excluded
+- Page rules and WAF custom rules for musike domain **unverified**
+- Tunnel idle timeout / keep‑ale settings **unverified** — possible cause of backgrounded fetch dropping
+
+### PWA service worker lifecycle on Android lock
+- `player.ts` onEnded() handler: `when repeat !== "all" AND autoRadio falsy AND queue exhausted, player pauses instead of loading next track`
+- `web/vite.config.ts`: `navigateFallbackDenylist: [/^/api\\\\//]` means API routes always bypass SW
+- No `navigator.backgroundSync` registration verified for next-track fetch
+- Service worker may be terminated by Android webview when screen locks, killing any background fetch
+
+### Root cause hypotheses (for Codex evaluation)
+1. **SW termination on lock**: Android webview terminates the SW on screen lock; next-track fetch uses normal `fetch()` which drops when SW is terminated
+2. **Cloudflare tunnel idle-drop**: Tunnel idle timeout drops the connection when app is backgrounded/locked; re-fetch on song completion fails
+3. **WAF geo-block**: `machan.live` WAF blocks non-MY IP traffic; CF‑originated next-track fetch from locked device is blocked
+4. **Missing caching headers**: No keep‑alive / stale‑while‑revalidate headers on musike Docker origin; backgrounded fetch stale and revalidated/failed
+
+### Suggested Codex evaluation priorities
+- PWA service worker lifecycle on Android lock screen (verify SW termination, Background Fetch/Sync registration)
+- Cloudflare tunnel idle timeout and keep‑alive configuration (test with `Cloudflare-Tunnel-Keep-Alive` or always‑on keep-alive)
+- WAF/page-rule configuration for musike domain (ensure CF‑originated traffic is exempt from geo‑block)
+- Caching headers on musike Docker origin (add `Cache-Control: public, max-age=300, stale-while-revalidate`)
+- Background Sync registration for next-track pre-fetch when app enters lock screen state
 
