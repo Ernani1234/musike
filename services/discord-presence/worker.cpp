@@ -14,7 +14,8 @@ using Json = nlohmann::json;
 int main() {
   auto client = std::make_shared<discordpp::Client>();
   std::filesystem::create_directories("/tmp/discord-logs");
-  client->SetLogDir("/tmp/discord-logs", discordpp::LoggingSeverity::Verbose);
+  bool logOk = client->SetLogDir("/tmp/discord-logs", discordpp::LoggingSeverity::Verbose);
+  std::cout << Json{{"event", "discord.sdk.logdir"}, {"ok", logOk}} << std::endl;
   bool ready = false;
   bool changed = false;
   std::optional<Json> activity;
