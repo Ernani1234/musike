@@ -1,4 +1,4 @@
-# Acceptance checklist — WIP demo package
+# Acceptance checklist — fork plus 19 November bugfixes
 
 Checked boxes below refer to automated fixtures/build checks performed for this package. Unchecked boxes require the operator's demo, external provider or physical device. They are not implied successes.
 
@@ -53,3 +53,19 @@ Checked boxes below refer to automated fixtures/build checks performed for this 
 - [x] Full suite, TypeScript checks and web/PWA, native-mode, server and Electron bundles pass; see TEST-RESULTS.md for exact results.
 - [x] ZIP is a changed/new-file source overlay; operator-owned .env, compose and deployment files, credentials, dependencies, caches/DBs and generated bundles are excluded.
 - [ ] Build/run the actual Docker image and native installers with the operator pipeline and verify architecture-specific Node/device behavior. No production deployment was performed here.
+
+
+## 19 November — BUG-002–006 regression acceptance
+
+- [x] Unicode/artist/duration/version/ambiguity matching tests and original-ID/ordered fallback fixtures.
+- [x] Live owner-scoped progress before job completion; bounded report deltas; review candidates/provider failures; idempotent retry and preserved restart checkpoints.
+- [x] Cold first-usable-byte race, stalled primary cancellation, byte ranges, 416, admission bounds and cancellation/shared resolver ownership.
+- [x] Actual Zustand player code exercised with synthetic media: playList, manual mutations, jump/shuffle/repeat, hidden ended handoff, stale radio results, transient recovery and autoplay fallback.
+- [x] Request trace isolation, HTML/opaque-redirect/challenge/error classification, telemetry bounds/redaction/auth wall and owner-scoped non-resolving probes.
+- [x] POSIX wrapper success/arguments, transient retry cap/clean stdout, fatal/pass-through behavior, explicit delay override and signal reaping.
+- [x] Full tests/typechecks and web/native/server/desktop bundles pass; exact results in TEST-RESULTS.md. CSS, dependencies, DB schema and other deployment files unchanged.
+- [ ] Re-run the actual failed Takeout/Google input; this source contains no Takeout adapter or the 387-item failed export. Record genuine unavailable/review counts and verify selected replacements.
+- [ ] Capture real radio-stall timing with diagnostics enabled; correlate browser trace/Ray IDs, origin stages and Access/WAF/tunnel records.
+- [ ] Test the reported Android PWA with screen off across at least ten transitions, plus manual next, rapid skips, pause/resume, online recovery and app restart. Synthetic hidden visibility is not physical-device evidence.
+- [ ] Compare wrapper legacy-delay and override-zero modes on demo, with real primary/direct fallback/403 behavior. Preserve rollback until measured.
+- [ ] Confirm source-only overlay installation keeps the approved wrapper executable, all operator-owned settings/mounts intact and owner/session isolation functional. No production deployment was performed here.

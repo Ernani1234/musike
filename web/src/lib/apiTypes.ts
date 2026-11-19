@@ -1,3 +1,4 @@
+import type { FailureKind } from "./playbackDiagnostics";
 import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, Library, Playlist, Track } from "./types";
 
 /**
@@ -8,7 +9,7 @@ import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, L
 export type ErrorCode = "tool_missing" | "maybe_outdated" | "bot_check" | "server_busy";
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public code?: ErrorCode) {
+  constructor(public status: number, message: string, public code?: ErrorCode, public failure?: FailureKind, public traceId?: string) {
     super(message);
   }
 }
@@ -77,8 +78,8 @@ export interface MusikeApi {
   searchAlbums(q: string, signal?: AbortSignal): Promise<AlbumCard[]>;
   /** The music video matching a song, or null when YouTube has none. */
   videoFor(t: Track): Promise<Track | null>;
-  prefetch?(currentId: string, upcomingIds: string[]): Promise<{ lookahead: number } | void>;
-  playbackSettings?(): Promise<{ lookahead: number; videoQuality: "sd" | "hd" }>;
+  prefetch?(currentId: string, upcomingIds: string[]): Promise<{ lookahead: number; readyIds?: string[] } | void>;
+  playbackSettings?(): Promise<{ lookahead: number; videoQuality: "sd" | "hd"; diagnostics?: boolean } >;
   prepare(id: string, signal?: AbortSignal): Promise<Prepared>;
 
   library(): Promise<Library>;

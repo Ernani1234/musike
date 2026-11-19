@@ -5,35 +5,28 @@ import { googleMusicSource, type GoogleTokens, type ImportSource, type SourceTra
 import { ytdlpSearch } from "./ytdlp.js";
 import { sanitizeTrack } from "./library.js";
 import { VIDEO_ID, type Track } from "./types.js";
-import { TaskQueue } from "./taskQueue.js";
+import { withClient, search } from "./search.js";
+import { rankImportCandidates, selectImportMatch, type SearchCandidate, type ScoredCandidate } from "./importMatching.js";
+export { selectImportMatch } from "./importMatching.js";
+import { TaskQueue, waitForSignal } from "./taskQueue.js";
 
 export interface GoogleOptions { clientId?: string; clientSecret?: string; redirectUri?: string; transport?: typeof fetch;
   source?: (tokens: GoogleTokens, signal: AbortSignal) => Promise<ImportSource>;
-  resolve?: (track: SourceTrack) => Promise<Track | null>; }
-interface ItemReport { sourceId: string; kind: string; title: string; status: "imported" | "already-present" | "not-found"; }
-interface Report { items: ItemReport[]; unavailable: string[]; imported: number; alreadyPresent: number; notFound: number; }
-
-interface SearchCandidate { id: string; title: string; channel?: string; uploader?: string; duration?: number; }
-const normalized = (text: string) => text.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase()
-  .replace(/\b(?:official|music video|audio|lyrics?|topic|vevo)\b/g, " ").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-/** Prefer the source ID; otherwise require both title and artist evidence, never the first arbitrary hit. */
-export function selectImportMatch(source: SourceTrack, candidates: SearchCandidate[]): SearchCandidate | null {
-  const valid = candidates.filter((entry) => VIDEO_ID.test(entry.id));
-  const exact = valid.find((entry) => entry.id === source.id); if (exact) return exact;
-  const title = normalized(source.title); const artist = normalized(source.artist);
-  if (!title || !artist) return null;
-  return valid.find((entry) => {
-    const candidateTitle = normalized(entry.title); const channel = normalized(entry.channel ?? entry.uploader ?? "");
-    const artistMatch = channel === artist || (` ${candidateTitle} `).includes(` ${artist} `);
-    return artistMatch && (candidateTitle === title || candidateTitle === `${artist} ${title}` || candidateTitle === `${title} ${artist}`);
-  }) ?? null;
-}
+  resolve?: (track: SourceTrack, signal?: AbortSignal) => Promise<Track | null>;
+  original?: (track: SourceTrack, signal: AbortSignal) => Promise<Track | null>;
+  candidates?: (track: SourceTrack, mode: "artist" | "music" | "title", signal: AbortSignal) => Promise<SearchCandidate[]>; }
+interface ItemReport { sourceId: string; kind: string; title: string; status: "imported" | "already-present" | "not-found" | "needs-review"; candidates?: ScoredCandidate[]; reason?: string; }
+interface Report { items: ItemReport[]; unavailable: string[]; imported: number; alreadyPresent: number; notFound: number; reviewNeeded: number;
+  progress: { phase: "queued" | "fetching" | "matching" | "complete" | "cancelled"; processed: number; total: number | null; current?: string; lastCompleted?: { sourceId: string; title: string; status: string }; pending?: number; startedAt: number; updatedAt: number } }
+interface Resolution { track: Track | null; candidates: ScoredCandidate[]; reason?: string; }
+const newReport = (): Report => ({ items: [], unavailable: [], imported: 0, alreadyPresent: 0, notFound: 0, reviewNeeded: 0,
+  progress: { phase: "queued", processed: 0, total: null, startedAt: Date.now(), updatedAt: Date.now() } });
 
 export class GoogleImport {
   readonly clientId: string; readonly clientSecret: string; readonly redirectUri: string;
   readonly configured: boolean; private transport: typeof fetch;
   private queue = new TaskQueue(2, 20, 60_000);
-  private jobs = new Map<string, { id: string; controller: AbortController; promise: Promise<void>; automatic: boolean }>();
+  private jobs = new Map<string, { id: string; controller: AbortController; promise: Promise<void>; automatic: boolean; report: Report }>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private closed = false;
   constructor(readonly accounts: Accounts, readonly options: GoogleOptions = {}) {
@@ -88,11 +81,16 @@ export class GoogleImport {
       return tokens;
     });
   }
-  async status(user: string) {
+  async status(user: string, after?: number, runId?: string) {
     const token = await this.accounts.db.get("SELECT auto_sync,last_sync FROM google_tokens WHERE user_id=?", [user]);
-    const run = await this.accounts.db.get("SELECT id,status,report FROM import_runs WHERE user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1", [user]);
+    const active = this.jobs.get(user);
+    const run = active ? { id: active.id, status: "running", report: active.report } :
+      await this.accounts.db.get("SELECT id,status,report FROM import_runs WHERE user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1", [user]);
+    const report: Report | null = run ? typeof run.report === "string" ? JSON.parse(run.report) : run.report : null;
+    const offset = report && runId === run?.id && Number.isInteger(after) && after! >= 0 ? Math.min(after!, report.items.length) : 0;
     return { connected: !!token, autoSync: !!token?.auto_sync, lastSync: token?.last_sync ?? null, runId: run?.id ?? null,
-      status: run?.status ?? null, report: run ? JSON.parse(run.report) : null };
+      status: run?.status ?? null, report: report ? { ...report, items: after === undefined ? report.items : report.items.slice(offset, offset + 100) } : null,
+      itemOffset: offset, itemTotal: report?.items.length ?? 0 };
   }
   async setSync(user: string, enabled: unknown) {
     if (typeof enabled !== "boolean") throw fail(400, "Invalid sync setting");
@@ -118,67 +116,124 @@ export class GoogleImport {
     if (!this.configured || this.closed) throw fail(503, "Google import is unavailable");
     if (this.jobs.has(user)) return { runId: this.jobs.get(user)!.id };
     if (!await this.accounts.db.get("SELECT user_id FROM google_tokens WHERE user_id=?", [user])) throw fail(409, "Google is not connected");
-    const id = randomUUID(); const controller = new AbortController();
+    const id = randomUUID(); const controller = new AbortController(); const report = newReport();
     await this.accounts.db.run("DELETE FROM import_runs WHERE user_id=? AND id NOT IN (SELECT id FROM import_runs WHERE user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 19)", [user, user]);
-    await this.accounts.db.run("INSERT INTO import_runs(id,user_id,status,created_at,report) VALUES(?,?,'running',?,?)", [id, user, this.accounts.now(), JSON.stringify({ items: [], unavailable: [], imported: 0, alreadyPresent: 0, notFound: 0 })]);
+    await this.accounts.db.run("INSERT INTO import_runs(id,user_id,status,created_at,report) VALUES(?,?,'running',?,?)", [id, user, this.accounts.now(), JSON.stringify(report)]);
     const promise = this.queue.run(async () => {
       if (automatic && !(await this.accounts.db.get("SELECT user_id FROM google_tokens WHERE user_id=? AND auto_sync=1", [user]))) throw new Error("Sync cancelled");
-      return this.run(user, id, controller.signal);
+      return this.run(user, id, controller.signal, report);
     }, controller.signal).catch(async () => {
-      await this.accounts.db.run("UPDATE import_runs SET status='error',report=? WHERE id=? AND user_id=?", [JSON.stringify({ unavailable: ["Import failed or cancelled"], items: [] }), id, user]).catch(() => {});
+      report.progress.phase = "cancelled"; report.progress.current = undefined; report.progress.updatedAt = Date.now();
+      report.unavailable.push("Import failed or cancelled; completed items retained");
+      await this.accounts.db.run("UPDATE import_runs SET status='error',report=? WHERE id=? AND user_id=?", [JSON.stringify(report), id, user]).catch(() => {});
       await this.accounts.audit(user, "google.import-failed", id, "background", "error").catch(() => {});
     }).finally(() => { if (this.jobs.get(user)?.id === id) this.jobs.delete(user); });
-    this.jobs.set(user, { id, controller, promise, automatic });
+    this.jobs.set(user, { id, controller, promise, automatic, report });
     return { runId: id };
     });
   }
-  private async resolve(source: SourceTrack): Promise<Track | null> {
-    if (this.options.resolve) return this.options.resolve(source);
-    const entries = await ytdlpSearch(`${source.title} ${source.artist}`.trim(), 5);
-    const first = selectImportMatch(source, entries);
-    return first ? sanitizeTrack({ id: first.id, title: source.title || first.title, artist: source.artist, album: source.album,
-      duration: first.duration ?? 0, thumb: `https://i.ytimg.com/vi/${first.id}/mqdefault.jpg`, art: `https://i.ytimg.com/vi/${first.id}/hq720.jpg`, kind: "song" }) : null;
+  private async resolve(source: SourceTrack, signal: AbortSignal): Promise<Resolution> {
+    if (this.options.resolve) return { track: await waitForSignal(this.options.resolve(source, signal), signal), candidates: [] };
+    const deadline = AbortSignal.any([signal, AbortSignal.timeout(30_000)]);
+    const originalSignal = AbortSignal.any([deadline, AbortSignal.timeout(6000)]);
+    const original = async () => {
+      const info: any = await withClient((yt) => yt.getBasicInfo(source.id), undefined, originalSignal);
+      if (info.playability_status?.status !== "OK") return null;
+      return sanitizeTrack({ id: source.id, title: source.title || info.basic_info?.title, artist: source.artist,
+        album: source.album, duration: source.duration || info.basic_info?.duration || 0,
+        thumb: `https://i.ytimg.com/vi/${source.id}/mqdefault.jpg`, art: `https://i.ytimg.com/vi/${source.id}/hq720.jpg`, kind: "song" });
+    };
+    if (VIDEO_ID.test(source.id)) {
+      try { const track = await waitForSignal(this.options.original ? this.options.original(source, originalSignal) : original(), originalSignal); if (track) return { track, candidates: [] }; }
+      catch { if (signal.aborted) throw new Error("Import cancelled"); }
+    }
+    const candidates: SearchCandidate[] = []; let failures = 0;
+    for (const mode of ["artist", "music", "title"] as const) {
+      if (deadline.aborted) break;
+      const attempt = AbortSignal.any([deadline, AbortSignal.timeout(8000)]);
+      try {
+        const result = this.options.candidates ? this.options.candidates(source, mode, attempt) : mode === "music" ?
+          search(`${source.title} ${source.artist}`.trim(), "song").then((tracks) => tracks.slice(0, 8).map((track) => ({ id: track.id, title: track.title, channel: track.artist, duration: track.duration }))) :
+          ytdlpSearch(mode === "title" ? source.title : `${source.title} ${source.artist}`.trim(), 8, attempt);
+        candidates.push(...(await waitForSignal(result, attempt)).slice(0, 8));
+        const match = selectImportMatch(source, candidates);
+        if (match) return { track: sanitizeTrack({ id: match.id, title: source.title || match.title, artist: source.artist, album: source.album,
+          duration: match.duration ?? source.duration ?? 0, thumb: `https://i.ytimg.com/vi/${match.id}/mqdefault.jpg`, art: `https://i.ytimg.com/vi/${match.id}/hq720.jpg`, kind: "song" }), candidates: [] };
+      } catch { failures++; if (signal.aborted) throw new Error("Import cancelled"); }
+    }
+    return { track: null, reason: failures === 3 || deadline.aborted ? "provider-unavailable" : "no-confident-match", candidates: rankImportCandidates(source, candidates).filter((item) => item.score >= .55).slice(0, 3) };
   }
-  private async run(user: string, run: string, signal: AbortSignal) {
+  private async run(user: string, run: string, signal: AbortSignal, report: Report) {
+    report.progress.phase = "fetching";
     const tokens = await this.tokens(user);
     const max = Math.max(1, Math.min(100000, Number(process.env.MUSIKE_IMPORT_MAX_ITEMS ?? 10000) || 10000));
-    const source = this.options.source ? await this.options.source(tokens, signal) : await googleMusicSource(tokens, this, this.transport, signal, max);
-    const lib = this.accounts.library(user);
-    const report: Report = { items: [], unavailable: [...source.unavailable], imported: 0, alreadyPresent: 0, notFound: 0 };
+    const source = await waitForSignal(this.options.source ? this.options.source(tokens, signal) : googleMusicSource(tokens, this, this.transport, signal, max), signal);
+    const lib = this.accounts.library(user); report.unavailable = [...source.unavailable];
+    report.progress.phase = "matching";
+    report.progress.total = Math.min(max, source.collections.reduce((n, collection) => n + collection.tracks.length, 0) + source.likes.length + source.history.slice(0, 60).length);
+    let checkpointItems = 0;
+    const checkpoint = async (force = false) => {
+      report.progress.updatedAt = Date.now();
+      if (!force && report.items.length - checkpointItems < 20) return;
+      await this.accounts.db.run("UPDATE import_runs SET report=? WHERE id=? AND user_id=?", [JSON.stringify(report), run, user]);
+      checkpointItems = report.items.length;
+    };
     const existing = new Map((await this.accounts.db.all("SELECT source_id,kind,destination_id FROM import_items WHERE user_id=?", [user]))
       .map((row) => [`${row.kind}:${row.source_id}`, row.destination_id as string]));
-    const resolved = new Map<string, Promise<Track | null>>();
+    const resolved = new Map<string, Promise<Resolution>>();
     const check = () => { if (signal.aborted || this.closed) throw new Error("Import cancelled"); };
     let processed = 0;
     const group = async (tracks: SourceTrack[], kind: "playlist" | "album" | "like" | "history", collection: string, present: Track[],
       save: (tracks: Track[]) => Promise<unknown>) => {
       const ids = new Set(present.map((track) => track.id));
-      const added: Track[] = [];
-      const records: { item: SourceTrack; trackId: string; status: "imported" | "already-present" }[] = [];
+      let added: Track[] = [];
+      let records: { item: SourceTrack; trackId: string; status: "imported" | "already-present" }[] = [];
+      let savedAt = Date.now();
+      const flush = async () => {
+        check(); if (added.length) await save(added);
+        if (records.length) await this.accounts.db.batch(records.map(({ item, trackId }) => ({
+          sql: "INSERT INTO import_items(user_id,source_id,kind,destination_id) VALUES(?,?,?,?) ON CONFLICT(user_id,source_id,kind) DO UPDATE SET destination_id=excluded.destination_id",
+          params: [user, `${collection}:${item.id}`, kind, trackId],
+        })));
+        for (const { item, trackId, status } of records) {
+          if (report.progress.lastCompleted?.sourceId === item.id) report.progress.lastCompleted.status = status;
+          if (status === "imported") report.imported++; else report.alreadyPresent++;
+          report.items.push({ sourceId: item.id, title: item.title, kind, status });
+          existing.set(`${kind}:${collection}:${item.id}`, trackId);
+        }
+        added = []; records = []; report.progress.pending = 0; savedAt = Date.now(); await checkpoint();
+      };
       for (const item of tracks) {
         check();
-        if (++processed > max) { if (!report.unavailable.includes("Import item limit reached")) report.unavailable.push("Import item limit reached"); break; }
-        const key = `${collection}:${item.id}`;
-        const mapped = existing.get(`${kind}:${key}`);
-        if (mapped && ids.has(mapped)) { records.push({ item, trackId: mapped, status: "already-present" }); continue; }
-        let resolution = resolved.get(item.id);
-        if (!resolution) { resolution = this.resolve(item).catch(() => null); resolved.set(item.id, resolution); }
-        const track = await resolution; check();
-        if (!track) { report.notFound++; report.items.push({ sourceId: item.id, title: item.title, kind, status: "not-found" }); continue; }
-        const status = ids.has(track.id) ? "already-present" as const : "imported" as const;
-        if (status === "imported") { added.push({ ...track, origin: { provider: "youtube-music", sourceId: key, kind } }); ids.add(track.id); }
-        records.push({ item, trackId: track.id, status });
+        if (processed >= max) { if (!report.unavailable.includes("Import item limit reached")) report.unavailable.push("Import item limit reached"); break; }
+        processed++; report.progress.processed = processed - 1; report.progress.current = item.title;
+        let completedStatus = "matched";
+        const key = `${collection}:${item.id}`; const mapped = existing.get(`${kind}:${key}`);
+        if (mapped && ids.has(mapped)) { completedStatus = "already-present"; records.push({ item, trackId: mapped, status: "already-present" }); }
+        else {
+          const resolutionKey = `${item.id}:${item.title}:${item.artist}`;
+          let resolution = resolved.get(resolutionKey);
+          if (!resolution) { resolution = this.resolve(item, signal).catch((): Resolution => ({ track: null, candidates: [], reason: "provider-unavailable" })); resolved.set(resolutionKey, resolution); }
+          const result = await resolution; check(); const track = result.track;
+          if (!track) {
+            const review = result.candidates.length > 0 || result.reason === "provider-unavailable";
+            completedStatus = review ? "needs-review" : "not-found";
+            if (review) report.reviewNeeded++; else report.notFound++;
+            report.items.push({ sourceId: item.id, title: item.title, kind, status: review ? "needs-review" : "not-found", reason: result.reason, ...(review ? { candidates: result.candidates } : {}) });
+          } else {
+            const status = ids.has(track.id) ? "already-present" as const : "imported" as const;
+            completedStatus = status === "already-present" ? status : "matched";
+            if (status === "imported") { added.push({ ...track, origin: { provider: "youtube-music", sourceId: key, kind } }); ids.add(track.id); }
+            records.push({ item, trackId: track.id, status });
+          }
+        }
+        report.progress.processed = processed; report.progress.updatedAt = Date.now();
+        report.progress.lastCompleted = { sourceId: item.id, title: item.title, status: completedStatus };
+        report.progress.pending = records.length;
+        if (records.length >= 20 || report.items.length === 0 && records.length > 0 || Date.now() - savedAt >= 1000) await flush();
+        else await checkpoint();
       }
-      check();
-      if (added.length) await save(added);
-      if (records.length) await this.accounts.db.batch(records.map(({ item, trackId }) => ({
-        sql: "INSERT INTO import_items(user_id,source_id,kind,destination_id) VALUES(?,?,?,?) ON CONFLICT(user_id,source_id,kind) DO UPDATE SET destination_id=excluded.destination_id",
-        params: [user, `${collection}:${item.id}`, kind, trackId],
-      })));
-      for (const { item, status } of records) {
-        if (status === "imported") report.imported++; else report.alreadyPresent++;
-        report.items.push({ sourceId: item.id, title: item.title, kind, status });
-      }
+      await flush();
     };
     for (const collection of source.collections) {
       check(); const key = `collection:${collection.id}`; const mapped = existing.get(`collection:${key}`);
@@ -194,9 +249,9 @@ export class GoogleImport {
     await group([...source.history.slice(0, 60)].reverse(), "history", "history", (await lib.getLibrary()).history, async (tracks) => {
       for (const track of tracks) { check(); await lib.pushHistory(track); }
     });
-    check();
+    check(); report.progress.phase = "complete"; report.progress.current = undefined; report.progress.updatedAt = Date.now();
     await this.accounts.db.batch([
-      { sql: "UPDATE import_runs SET status=?,report=? WHERE id=? AND user_id=?", params: [report.unavailable.length || report.notFound ? "partial" : "done", JSON.stringify(report), run, user] },
+      { sql: "UPDATE import_runs SET status=?,report=? WHERE id=? AND user_id=?", params: [report.unavailable.length || report.notFound || report.reviewNeeded ? "partial" : "done", JSON.stringify(report), run, user] },
       { sql: "UPDATE google_tokens SET last_sync=? WHERE user_id=?", params: [this.accounts.now(), user] },
     ]);
   }
@@ -209,7 +264,15 @@ export class GoogleImport {
     }
   }
   async recover() {
-    await this.accounts.db.run("UPDATE import_runs SET status='error',report=? WHERE status='running'", [JSON.stringify({ items: [], unavailable: ["Import interrupted by server restart"] })]);
+    const rows = await this.accounts.db.all("SELECT id,user_id,report FROM import_runs WHERE status='running'");
+    if (!rows.length) return;
+    await this.accounts.db.batch(rows.map((row) => {
+      let report: Partial<Report>;
+      try { report = JSON.parse(row.report); } catch { report = newReport(); }
+      report.unavailable = [...(report.unavailable ?? []), "Import interrupted by server restart; completed checkpoints retained"];
+      if (report.progress) report.progress = { ...report.progress, phase: "cancelled", current: undefined, pending: 0, updatedAt: Date.now() };
+      return { sql: "UPDATE import_runs SET status='error',report=? WHERE id=? AND user_id=?", params: [JSON.stringify(report), row.id, row.user_id] };
+    }));
   }
   schedule() { if (!this.configured || this.timer) return; this.timer = setInterval(() => void this.syncDue().catch(() => {}), 60_000); this.timer.unref(); }
   async close() { this.closed = true; if (this.timer) clearInterval(this.timer); this.queue.close(); for (const job of this.jobs.values()) job.controller.abort();
@@ -224,7 +287,10 @@ export function registerGoogle(app: FastifyInstance, service: GoogleImport | nul
     if (!req.musikeUser) throw fail(401, "Login required");
     await requireService().callback(query.state, query.code, req.realClientIp, req.musikeUser.id); return reply.redirect("/library?google=connected");
   });
-  app.get("/api/google/status", async (req) => requireService().status(req.musikeUser!.id));
+  app.get("/api/google/status", { schema: { querystring: { type: "object", additionalProperties: false, properties: {
+    after: { type: "integer", minimum: 0, maximum: 100000 }, runId: { type: "string", maxLength: 80 } } } } }, async (req) => {
+    const query = req.query as { after?: number; runId?: string }; return requireService().status(req.musikeUser!.id, query.after, query.runId);
+  });
   app.post("/api/google/import", async (req, reply) => reply.code(202).send(await requireService().start(req.musikeUser!.id)));
   app.post("/api/google/sync", async (req) => requireService().setSync(req.musikeUser!.id, (req.body as { enabled?: unknown })?.enabled));
   app.post("/api/google/disconnect", async (req) => requireService().disconnect(req.musikeUser!.id));

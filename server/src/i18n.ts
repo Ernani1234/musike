@@ -7,6 +7,8 @@ export type Lang = "en" | "pt-BR";
 type Params = Record<string, string | number>;
 
 const en = {
+  radioTimeout: "Radio took too long to answer. Try again.",
+  playbackTimeout: "Audio preparation timed out. Try again.",
   serverBusy: "The server is busy. Try again in a moment.",
   ytdlpOutputLimit: "The media tool returned too much data.",
   invalidVideoId: "Invalid video ID.",
@@ -60,6 +62,8 @@ const en = {
 export type MsgKey = keyof typeof en;
 
 const pt: Record<MsgKey, string> = {
+  radioTimeout: "O rádio demorou demais para responder. Tente novamente.",
+  playbackTimeout: "A preparação do áudio demorou demais. Tente novamente.",
   serverBusy: "O servidor está ocupado. Tente de novo em instantes.",
   ytdlpOutputLimit: "A ferramenta de mídia retornou dados demais.",
   invalidVideoId: "ID de vídeo inválido.",

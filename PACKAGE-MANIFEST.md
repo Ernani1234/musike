@@ -1,65 +1,57 @@
-# Source overlay manifest
+# Targeted bugfix overlay manifest
 
-Base: Azan-Shah/musike main `85843fd42020dbf47831ec97d268981ec0f434d9`.
+Base: uploaded fork main `da3f88384651cdf8ee487054a50b0effb277cb45`. Date: 19 November 2026.
 
-Extract the ZIP **directly into the fork repository root**, keeping all unchanged fork files. This is not a complete standalone checkout. Every listed file is a complete final file; no patch application is required. Operator-owned environment/compose/deployment files are absent and unchanged. No dependencies, build outputs or runtime data are included. Read DEPLOYMENT-NOTES.md before enabling auth/import.
+Extract directly into the existing fork repository root. Complete changed/new files are supplied. Alternatively apply BUGFIXES.patch against that base; do not apply both methods. Keep unchanged fork/operator files. The only approved deployment change is deploy/ytdlp-wrap.sh, supplied executable. No environment/compose/Dockerfile/DB/runtime/dependency/build output is included.
 
-Payload: 55 changed/new files below plus this manifest (56 ZIP entries). SHA-256 values cover the uncompressed bytes. The manifest does not hash itself.
+Payload: 47 replacements/new files below, plus this manifest and BUGFIXES.patch (49 ZIP entries). SHA-256 covers uncompressed bytes. The manifest omits its own hash and the patch hash to avoid a recursive hash dependency; the patch includes the manifest.
 
 | Status | Path | SHA-256 |
 | --- | --- | --- |
-| New | ACCEPTANCE-CHECKLIST.md | 2427f30e96a26dbd57db86152a922a66fb7c487ef8e8d5ded3c7dbe33bce6d0d |
-| New | AGENTS.md | 401385e78eb10b2d26daf167403cb4888511836359ab43fada6e4b49f5897946 |
-| Changed | ARCHITECTURE.md | 4cd26b477f0475786f868e0603f963213083398bf22cfe5a89a296e9bb0d5638 |
-| New | CHANGELOG.md | 9660195d76773cc4476391ce3f095ecd838ce10b559a975b196020e71f492b05 |
-| New | DATABASE-DECISION.md | 4f30fe49dfc2c5cb49b87977f56dfcd1899b71543b5bcdac1054055dd00fd02e |
-| New | DEPLOYMENT-NOTES.md | 796daeb4b75d4be7a15a081e89d9ecb84bcb8cd33eea97d958f36af8d3cfee3e |
-| Changed | HERMES_FOUND_BUGS.md | 30d61d40654a36b1c516acb2fe25ad9ec47facda2e2ffa683e18c0e7b5528c1b |
-| New | IMPLEMENTATION-PLAN.md | 4c2a959ea79af0e834cbd5f3a540728780f6a322a69ea1ca2011a07bab579041 |
-| Changed | IMPLEMENTATION_SUMMARY.md | 7db59409a4f4d9ee7417b20c611e10a2cbb6271fe7d6097e3a1446526ff07853 |
-| Changed | PERFORMANCE_AUDIT.md | d7f5544c85dabb96c8d2bfe5ace16f65c7cd016b125cd5a629a5d7891639224f |
-| Changed | README.md | e5c455736785ba9f2eeb037ec6a19d8b15e4e32c6df63ff8a6013c58a2f3b37d |
-| New | TEST-RESULTS.md | 143fca9cbd8d2932ee8adcf2c7135278ee93549fc859c4c7077bdb0805b73ec6 |
-| Changed | server/package.json | 07b151ce5ea049047c2bba9f6cb2caa92a136840037d2f94d5f65c985b78c1d1 |
-| New | server/src/accountRoutes.ts | 63f12fcb781c4aa000c2dd3aabb070ed56a6cadebc2bdbc9af2224f8556a7a15 |
-| New | server/src/accounts.ts | ab2bf6db422e0f3f963f74c2904d09013a3ee23308c1b5111a6da0fa62170215 |
-| New | server/src/adminRoutes.ts | 58f15a31a7cd57d35f561b6e9a3b57fc2231729ba0406985fc508f69bb6d00ca |
-| Changed | server/src/app.ts | 5cdf66fde3930a2cea4b971cd1080e8ca07d008feba8256ea7a31645a7925313 |
-| New | server/src/audioCache.ts | 66574e7a6b3447fef460937022d8386425bba9e82c7ddd9c36c773e1be3f1498 |
-| New | server/src/cacheBudget.ts | e1d3a3daf48aa8f05adaf99233a730bc96c5a584d8d63a020fdebc25d8da658e |
-| Changed | server/src/config.ts | 4ec48c736ee319ee679797d894473127ec5dce8244a8233d14868ab99f6d7667 |
-| New | server/src/db.ts | af9a1138126830b2f60bea25fc000462184b14d9d73db218aa0984271f6282f5 |
-| New | server/src/googleImport.ts | 20c925e86b859908da2fd3d4981fffcb7eba475f67d62fdde9a66b63576f8b45 |
-| New | server/src/googleSource.ts | d3f5bbae98aa7aec1507fbc1a0ef5e7dd7e820eaffc498ecc0bf172fcdffcc21 |
-| Changed | server/src/index.ts | 5688d55d0cb3afedce9e22c82e3d31018f9658bb10281953a26e07cd9db4aa9c |
-| Changed | server/src/library.ts | 1fd3e110eeeee78d5f87b34c4fffac86c672d1267c80861ba4fc4be6704ef2dd |
-| New | server/src/promote.ts | 2d3ae368fa89ef4724fea38f496ff96f2c93fe0df5dd61e577a4cbcb5ec3fe64 |
-| New | server/src/proxy.ts | ae254e68a24a4f64cc664906b887257c7e2e6e52e04a4110074d5fe66f955b60 |
-| New | server/src/secret.ts | 38b1cf60db34ba756880b7854eab681a84de3f223b30bb1d6ba5d19fd519480e |
-| Changed | server/src/taskQueue.ts | 39502dab3f2984efff514f0fb1d36b729ae0906c2c1af7abe803eccbd355687f |
-| Changed | server/src/types.ts | 28dec377e43eb0fe6ce26d29cd1b09e9993ce2b202615c56241ad8318442e17c |
-| Changed | server/src/ytdlp.ts | ee9c20503a08b73f9692d96cb33468601998baa3db35174f3f3aab0b395b13b9 |
-| New | server/test/accounts.test.ts | a7718aed4c964488161012bba4a441db165e8749637d772298057723885ba4cb |
-| New | server/test/admin.test.ts | eb9805d463939dbed4131d99370df9f2413bd5b5daabcac134e44df92fae9f51 |
-| New | server/test/audio-cache.test.ts | 069ba7ae8aaf03208c19a60e5b794eb102d7580b57d3c796b5f2f81e3cf78bca |
-| New | server/test/google-import.test.ts | ee19638798499679653282468d80e5bea2e28d0c638d604456387447d4d83663 |
-| New | server/test/playback-queue.test.ts | 07b5d69f2533dfd3e8f1e69ff18687fff3769df2d5fbd95dd16dcffa49680ac9 |
-| Changed | web/src/App.tsx | 7c3521dd1c02b81416b006fef7e9ac48096e23b4ccec16bc0dc815b24b047995 |
-| New | web/src/components/AccountPanel.tsx | 244b2407f35e5b9c1bfac047ff159f75acdb855699a3d9ae6f8a96cb11e5d138 |
-| New | web/src/components/AdminPanel.tsx | 2b596ecbd705d27744eaa1a3d6ed58516e1cb09a0e655174ca9c12671d7c5e69 |
-| New | web/src/components/AuthGate.tsx | d2b763a337227b32aeb9df9f68dd9d65d33ed9e882a32325f676c66059226605 |
-| Changed | web/src/components/SettingsDialog.tsx | 57064429eeb9fbd07d906f5b746bfbe5c70cac4d06ee3158d4ddb9421863a777 |
-| Changed | web/src/components/TrackMenu.tsx | 0fe8eee985c3264ce1eb71fca986518f3b1b045d35675335d56c99400f319e9e |
-| Changed | web/src/i18n/en.ts | 75f00304816e6f3e4c2c4a13e536ef613420e99d3fbd1be0d96e9c81dccabb4b |
-| Changed | web/src/i18n/pt.ts | 98c5ab9cbff1ce2301e10a87f59f83abbfb5cdd49f264149d98c798cbadc1ad4 |
-| Changed | web/src/lib/api.ts | 5a970fd4342bb0e8b1cc012f0984cf7dd0fcb19fb12ec4448887a3136ffaceaf |
-| Changed | web/src/lib/apiTypes.ts | 04c2c6b8079259e537f048ee7e9e80cab0adc6b3a53b0c67f7dd573855a9e903 |
-| Changed | web/src/lib/audio.ts | 5eab56fcb8d6b0a9e4b0b853ab04117d0fc44c1a3bd3a479532b7c3197095e0c |
-| New | web/src/lib/playbackQueue.ts | f52922b26de43d3740b3aafd43b3cbf3c2f7124080849a40e5e9b98e6ae72a0a |
-| Changed | web/src/lib/types.ts | 5f6c77faa78bc446dad566b59129275c152953df9d7f8364526201c3829ce6e3 |
-| Changed | web/src/main.tsx | 16dc80ae8843db501083793159b1b352bef42d72719e9d03c0644893db1aa687 |
-| Changed | web/src/native/api.ts | fa70727532b3075346eaa8b3ba916db3c73f07ccb4434968590ba366bd1b0262 |
-| Changed | web/src/player/player.ts | 2ff9b86658a25c54692ef40a11dfcdeefefbe5a26d23de8db0cc5b9713ac3ab6 |
-| New | web/src/stores/session.ts | 4af7be24a237df7a7795fbabb884f460e250d74ce938f5b53f602e821c01ca8a |
-| Changed | web/src/views/Collection.tsx | ffdb3c0ca1bc645bf0a5254f064c8500f49db38bf6eac4e578bc661f3fef5122 |
-| Changed | web/src/views/Library.tsx | 9ae0b22b94f06eeb376811de801402ded32afaadb15318dc921fd662f167c89d |
+| Changed | ACCEPTANCE-CHECKLIST.md | d7addcec0acee9e0f50ca9b6ccc6a7526f330ea1a140527122afd8537819f948 |
+| Changed | AGENTS.md | 2e0c9acc809761aa2adc38d30eac388a875ee9a060cacd8548dce11c15546a1c |
+| Changed | ARCHITECTURE.md | fbbadef0c7ebc90e86ff9ef3d7de978b3649066e903d9f2fc7fe60bb1a45b3a2 |
+| New | BUGFIX-IMPACT.md | 490d316d075aa5efeb4272b55c7e21e1f8c8d34be788c2f9e145713880fa5461 |
+| Changed | CHANGELOG.md | d7c1592b2ad7aa8fe2929d20f3302e8bec0b1976f69a529d319ec2141fc85e30 |
+| New | DEMO-VERIFICATION.md | e804ef42c39621546b028c482a00d33cc666d35070791e98360ae78acd568eec |
+| Changed | DEPLOYMENT-NOTES.md | 994fd80bb3ea3b85c38f97c62d7453047363ca805e980b276048721fef32a3fd |
+| New | DOCUMENTATION-SYNC.md | 020fa0caab3895666efcadcfdc031f4cb62b2bfd1133ded82a269d9d98bd7aba |
+| Changed | HERMES_FOUND_BUGS.md | 03f799d2eb61a58b8c573f755fff1ec6ff0fce73e2dfc2a0bd6edc515938d536 |
+| Changed | IMPLEMENTATION-PLAN.md | eb45d5326c0de286dc530e6a813b560b8e5543c0253fc1b40bbdf666a4ae780e |
+| Changed | IMPLEMENTATION_SUMMARY.md | 4769ed02917edac5214fd5d12f0d2d5572bfbebb2c2d1f6601d8282c8693ff51 |
+| Changed | PERFORMANCE_AUDIT.md | 340ca013a87459694bde2bdd91d9f4e38ae5129fc4198de3219ae92784a692c0 |
+| Changed | TEST-RESULTS.md | e9253d5ec14f74fabfd577db364a6d0e4cdf7b1d6839e8922f357a2ec562cf7d |
+| Changed | deploy/ytdlp-wrap.sh | 17c2c405dd327bd34a688472b0ce0d9a84e2d631a025f53d73de1b457e8695c2 |
+| Changed | server/src/app.ts | 094bcfb98f2af689b25b72207baa11518445b117bd94c0641e7f57a4b4ff57f3 |
+| Changed | server/src/audioCache.ts | 8b9508dc934411518f93a066d80aec24cee989b598a7c03cdc618c8a04c0e95f |
+| Changed | server/src/directAudio.ts | 5df7e5aad2d18718ea72174b8e23ef643d5a4723c3aa5f065e187363d323fbfd |
+| Changed | server/src/googleImport.ts | 99b1ae08b82f0ac25c01f215382f92af0255b0a44e4d0797f861d45cae0a8713 |
+| Changed | server/src/googleSource.ts | b30c849269d9206b53013ce2e54a6b684ec851dfb56d567409dd493b8d604d83 |
+| Changed | server/src/i18n.ts | 00acb3ae0e64de50861414278e5afcf62359031c2477922ec61cd62729dc68be |
+| New | server/src/importMatching.ts | 0cc58b6c9ec79f36cdf47abceefd7b1dbdc5d1c2b5705199e7d84e8912f964ab |
+| New | server/src/playbackDiagnostics.ts | cfcf70a4ade67c06e47d6657b74a9f6c79ba44c0e7a87b83c18cf5b91ac2a81b |
+| Changed | server/src/process.ts | 1adc0207a1deff6ade3b8b528172bd676a7d1a0c8866cfe9db8e71cf3857105e |
+| Changed | server/src/search.ts | 7f2c12266f33925baddfa0920537d4546cbf8ccfed1f8eb27db6f1dc3a302f6f |
+| Changed | server/src/stream.ts | 5ddc263d0ab8dffc38ce9256c5d1ac3b54c7707017ab10ce1c19b69e9fd9cc1f |
+| Changed | server/src/taskQueue.ts | 09d12603c5cb421d6942cc811277ba24d5f81df0ca3002157a480361f4ea9109 |
+| Changed | server/src/ytdlp.ts | 1597d552520800d0f13bbed62db429cbe1e7b697cee3519c46c690376b178382 |
+| Changed | server/test/accounts.test.ts | edc933a4687c68b26611866e03c70708fa624b0ab16ba01c2b335f66466eebc1 |
+| Changed | server/test/audio-cache.test.ts | 4650baa992f81b44549544e1b8489859b4d88d148b46df45f9544c4236b6ecb1 |
+| New | server/test/cold-audio.test.ts | f0fee360de363beb8b0abbb470a9a620336cf9b02f4c31c788b1b1d28272d143 |
+| New | server/test/direct-client-cache.test.ts | 201ca4a23c4a35fd4608371f37612c1a3afd363ddec015d8d45b67f6d40dfaa7 |
+| Changed | server/test/google-import.test.ts | d92dfa71312a6ea22304fc1829d03065edbc97d3639677b233d2010bbd9c590e |
+| New | server/test/import-matching.test.ts | ac0d31fbc331ca130d8880a7c3489d72d5fb809e8f27db6ac0868494430da4df |
+| New | server/test/playback-diagnostics.test.ts | 8885b25fe0ed8bad3d66b3dc931d2329cb6207c5b97d7af3678eb9cb0a61c5e0 |
+| New | server/test/player-lifecycle.test.ts | e18e6d479d0e939f9feaeec4e2f0b30e6c610f4a0293269f7eac328ceb4b0eff |
+| New | server/test/resolve-cancellation.test.ts | d6c9bdc69114cef17a5759c56143a808ac05f9d2b22b824b5d7357c791db6bcf |
+| New | server/test/wrapper.test.ts | 22b71cde482ca7dbb63a464eae7f976f00441eb518942bce0b56564a3e98ccc8 |
+| Changed | web/src/components/AccountPanel.tsx | 547b2e210f0a69db10b4ede14333a2d81c1182467fc68943fb6080986acb62ae |
+| Changed | web/src/i18n/en.ts | 0d96ec0516bb248f891c08a75f21cbd163af2a8e2aca50d5fe1b167fddfccddb |
+| Changed | web/src/lib/api.ts | 7447db29003b8b56d61c0c464067a386f1d4acfe762c79780d7ece59633cd40e |
+| Changed | web/src/lib/apiTypes.ts | 17dba82a3d77faf1e0d8c01ad7ff82ccdea1a5235e9887e021450f51700dc34f |
+| Changed | web/src/lib/audio.ts | 3163b3a8230c54cfaa5d04e562a10c448fcf63867e00d0cd5ff658efef5112a4 |
+| New | web/src/lib/playbackDiagnostics.ts | 73b3d7d6487dda2745b4e8925c11033b207690784332a77de92cc45bbcef19ce |
+| New | web/src/lib/playbackRecovery.ts | 456ec4a7fcf7dc517150ac89a9ca19b17e13dcebb0505b1ada6f78b0856288a5 |
+| Changed | web/src/native/api.ts | 298e16c9850d6bb793976a3321ded8fbfd1e17829720382afb20cbdbb1c44e40 |
+| Changed | web/src/player/player.ts | d235085a0f210dd75a42b9e65127d0cfbe8354062f2a7ed3d73aae91364da5d0 |
+| Changed | web/src/stores/session.ts | 7d35c0252c6a1450b2eca9fec3da937b31dbb0a8f10b6bedb9efc9ee2228f785 |

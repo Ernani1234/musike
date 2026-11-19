@@ -1,3 +1,4 @@
+import { waitForSignal } from "./taskQueue.js";
 import { Innertube } from "youtubei.js";
 import { cached } from "./cache.js";
 import { config } from "./config.js";
@@ -25,14 +26,19 @@ function yt(hl: string): Promise<Innertube> {
  * Runs `fn` with a YouTube Music session in `lang` (the server default when the caller has none).
  * Retries once with a fresh session, since sessions can go stale.
  */
-export async function withClient<T>(fn: (yt: Innertube) => Promise<T>, lang?: Lang): Promise<T> {
+export async function withClient<T>(fn: (yt: Innertube) => Promise<T>, lang?: Lang, signal?: AbortSignal): Promise<T> {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  const execute = async () => {
   const hl = lang ? youtubeLang(lang) : config.lang;
   try {
     return await fn(await yt(hl));
   } catch {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     clients.delete(hl);
     return fn(await yt(hl));
   }
+  };
+  return signal ? waitForSignal(execute(), signal) : execute();
 }
 
 export function sized(url: string | undefined, px: number): string {
@@ -231,8 +237,9 @@ function pickClip(candidates: Track[], title: string, artist: string, duration: 
 }
 
 /** YouTube Music "radio" for a track: related songs to continue playback. */
-export async function radio(id: string): Promise<Track[]> {
-  const panel = await withClient((yt) => yt.music.getUpNext(id, true));
+export async function radio(id: string, signal?: AbortSignal): Promise<Track[]> {
+  const deadline = signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000);
+  const panel = await withClient((yt) => yt.music.getUpNext(id, true), undefined, deadline);
   return (panel.contents ?? [])
     .map((i) => toTrack(i, "song"))
     .filter((t): t is Track => !!t && t.id !== id);

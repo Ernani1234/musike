@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — targeted BUG-002–006 fixes — 2026-11-19
+
+- BUG-002: original-ID validation, Unicode title/artist/duration/version ranking, ordered bounded resolver fallbacks and reviewable uncertain/provider failures. Added live progress, bounded report deltas/checkpoints and preserved restart reports; retries remain idempotent. The supplied source has no Takeout adapter; the reported failed export still needs demo reproduction.
+- BUG-003: cold audio uses the same first-usable-byte primary/direct race as preparation, with bounded admission/timeouts and preserved Range/no-store. Browser preloading/handoff uses server-ready media, stale queues are cancelled, and shared subprocess cancellation respects other consumers.
+- BUG-004: correlated request/trace/stage timings and available Cloudflare Ray IDs; bounded client telemetry/export, manual redirect/error classification, recent failure probes without re-resolution, radio/media retry and lifecycle recovery. The production incident cause remains verification-pending.
+- BUG-005: user-approved wrapper-only deployment exception. Removed implicit success sleep, bounded/classified metadata retries, clean final stdout and signal forwarding. Explicit legacy delay compatibility is preserved; other operator files are unchanged.
+- BUG-006: browser buffering before background transitions and lifecycle diagnostics/recovery, with synthetic hidden-state tests. No speculative public API caching, WAF exception, keep-alive header or Background Sync scheduler was added. Real locked-device/tunnel verification remains outstanding.
+- BUG-001: original field report/mitigation retained. No claim that upstream URL semantics or the historical wrapper explanation were verified here.
+- Validation: see TEST-RESULTS.md. SQLite schema, dependencies, CSS tokens and auth/native ownership boundaries are unchanged. Complete replacements and a clean patch are delivered in one source overlay.
+
+
 ## Unreleased — WIP demo package — 2026-11-18
 
 ### Phase 1 — Queue pre-caching

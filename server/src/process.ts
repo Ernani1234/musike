@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
 
 export class ProcessError extends Error {
-  constructor(public reason: "timeout" | "output" | "spawn" | "shutdown", message: string) { super(message); }
+  constructor(public reason: "timeout" | "output" | "spawn" | "shutdown" | "cancelled", message: string) { super(message); }
 }
 const running = new Set<() => void>();
 
 /** Bounded capture, deadline and termination escalation without releasing a live process's queue slot. */
-export function runProcess(command: string, args: string[], env: NodeJS.ProcessEnv, timeoutMs: number, maxBytes = 16 * 1024 * 1024) {
+export function runProcess(command: string, args: string[], env: NodeJS.ProcessEnv, timeoutMs: number, maxBytes = 16 * 1024 * 1024, signal?: AbortSignal) {
   return new Promise<{ stdout: string; stderr: string; code: number | null }>((resolve, reject) => {
+    if (signal?.aborted) { reject(new ProcessError("cancelled", "Process cancelled")); return; }
     const grouped = process.platform !== "win32";
     const child = spawn(command, args, { windowsHide: true, env, detached: grouped });
     const stdout: Buffer[] = [];
@@ -28,6 +29,8 @@ export function runProcess(command: string, args: string[], env: NodeJS.ProcessE
       escalation = setTimeout(() => kill("SIGKILL"), 2000);
     };
     const shutdown = () => stop(new ProcessError("shutdown", "Server is shutting down"));
+    const cancel = () => stop(new ProcessError("cancelled", "Process cancelled"));
+    signal?.addEventListener("abort", cancel, { once: true });
     running.add(shutdown);
     const timer = setTimeout(() => stop(new ProcessError("timeout", "Process deadline exceeded")), timeoutMs);
     const capture = (target: Buffer[]) => (data: Buffer) => {
@@ -42,6 +45,7 @@ export function runProcess(command: string, args: string[], env: NodeJS.ProcessE
       clearTimeout(timer);
       clearTimeout(escalation);
       running.delete(shutdown);
+      signal?.removeEventListener("abort", cancel);
       if (failure) reject(failure);
       else resolve({ stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString(), code });
     });

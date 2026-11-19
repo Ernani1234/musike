@@ -1,5 +1,8 @@
 # Musike Performance & Structural Audit
 
+> Historical 18 November package record. Current targeted fixes and contracts are documented in BUGFIX-IMPACT.md, ARCHITECTURE.md and TEST-RESULTS.md; follow the current DEPLOYMENT-NOTES.md for the approved wrapper exception.
+
+
 > Historical audit of the earlier fork refactor, retained as evidence. Its pre-account/no-SQLite findings and old test/bundle counts describe that baseline. The four-phase update below and ARCHITECTURE.md/TEST-RESULTS.md describe the current package.
 
 

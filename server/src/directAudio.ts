@@ -40,11 +40,12 @@ export async function fetchRemoteClients(key: "clients" | "ios" = "clients"): Pr
 }
 
 /** Tries each client in turn. Throws with YouTube's reason (or an empty message) when none of them has audio. */
-export async function directAudio(id: string, clients: string[], lang?: Lang): Promise<DirectAudio> {
+export async function directAudio(id: string, clients: string[], lang?: Lang, signal?: AbortSignal): Promise<DirectAudio> {
   let reason = "";
   for (const client of clients) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     try {
-      const info: any = await withClient((yt) => yt.getBasicInfo(id, { client: client as never }), lang);
+      const info: any = await withClient((yt) => yt.getBasicInfo(id, { client: client as never }), lang, signal);
       const status = info.playability_status;
       if (status?.status && status.status !== "OK") {
         reason = text(status.reason) || reason;

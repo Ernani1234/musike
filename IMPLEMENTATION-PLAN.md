@@ -1,5 +1,8 @@
 # Implementation map and safe execution order
 
+> Historical 18 November package record. Current targeted fixes and contracts are documented in BUGFIX-IMPACT.md, ARCHITECTURE.md and TEST-RESULTS.md; follow the current DEPLOYMENT-NOTES.md for the approved wrapper exception.
+
+
 This source overlay was implemented sequentially on fork main `85843fd`: phase 1 cache/queue, phase 2 accounts/storage, phase 3 admin/proxy, phase 4 import. Initial checks used the uploaded ARCHITECTURE.md and append-only HERMES_FOUND_BUGS.md; the archive had no AGENTS.md. No upstream rebase or operator-file change is part of this package.
 
 ## Files and architectural boundaries

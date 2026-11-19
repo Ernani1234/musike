@@ -177,3 +177,28 @@ test("a single invitation cannot create two accounts during concurrent verificat
     assert.equal((await a.db.get("SELECT count(*) AS n FROM users"))!.n, 2);
   } finally { await a.close(); await f.restore(); }
 });
+
+test("playback diagnostics ingestion respects the hard login and CSRF wall", async () => {
+  const f = await fixture(); const app = await createApp(f.options);
+  try {
+    const response = await app.inject({ url: "/api/playback/events", method: "POST", headers: { "x-musike-request": "1" }, payload: { events: [] } });
+    assert.equal(response.statusCode, 401);
+  } finally { await app.close(); await f.restore(); }
+});
+
+test("a playback error probe cannot read another account's failure even with the same trace ID", async () => {
+  const f = await fixture(); const app = await createApp({ ...f.options, audio: { candidates: async () => [] } });
+  const call = (url: string, cookie?: string, payload?: unknown) => app.inject({ url, method: payload === undefined ? "GET" : "POST", headers: { "x-musike-request": "1", ...(cookie ? { cookie } : {}) }, ...(payload === undefined ? {} : { payload }) });
+  const login = async (n: number, invite?: string) => {
+    const challenge = (await call("/api/auth/request", undefined, { phone: phone(n), invite })).json();
+    const response = await call("/api/auth/verify", undefined, { challengeId: challenge.challengeId, code: f.codes.get(phone(n)) });
+    return (response.headers["set-cookie"] as string[]).map((value) => value.split(";")[0]).join("; ");
+  };
+  try {
+    const admin = await login(1); const invite = (await call("/api/admin/invites", admin, {})).json().code; const user = await login(2, invite);
+    const url = "/api/stream/probe-test1/audio?trace=d2d17377-7115-4d83-a23d-142b82415e43";
+    assert.equal((await call(url, admin)).statusCode, 502);
+    assert.equal((await call(`${url}&probe=1`, admin)).statusCode, 502);
+    assert.equal((await call(`${url}&probe=1`, user)).statusCode, 200);
+  } finally { await app.close(); await f.restore(); }
+});

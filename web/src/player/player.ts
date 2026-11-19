@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import { getT, useT } from "../i18n";
-import { api, capabilities, explainStreamError, streamSource, systemMedia, type ApiError, type ErrorCode } from "../lib/api";
-import { createAudio } from "../lib/audio";
+import { api, capabilities, explainStreamError, saveFile, streamSource, systemMedia, type ApiError, type ErrorCode } from "../lib/api";
+import { beginPlaybackTrace, recordPlayback, playbackEvents, flushPlaybackEvents, type FailureKind } from "../lib/playbackDiagnostics";
+import { recoverableFailure, requestRadio } from "../lib/playbackRecovery";
+import { createAudio, createUpcomingAudio } from "../lib/audio";
 import { shuffled } from "../lib/format";
 import type { Track } from "../lib/types";
 import { playerWriter, type SavedPlayer as Saved } from "../lib/playerPersistence";
@@ -68,7 +70,13 @@ interface PlayerState {
 
 // Media elements live outside React so playback survives any re-render or route change.
 // On iOS this is the native player behind the same API (see lib/audio.ts).
-const audio = createAudio();
+let audio = createAudio();
+let spareAudio = createUpcomingAudio();
+let preloaded: { id: string; trace: string } | null = null;
+let resumeWanted = false;
+let lastFailure: FailureKind | undefined;
+let recoveryCount = 0;
+let recoveryId = "";
 
 export const videoEl = document.createElement("video");
 videoEl.playsInline = true;
@@ -85,6 +93,8 @@ let recordedToken = -1;
 let sessionLost = false;
 let lookahead = 3;
 let qualityChanged = false;
+let loadingAt = Date.now();
+let onLoadingDeadline = () => {};
 
 const STORAGE_KEY = `musike:player${sessionStorage.getItem("musike:user") ? `:${sessionStorage.getItem("musike:user")}` : ""}`;
 
@@ -139,19 +149,25 @@ export const usePlayer = create<PlayerState>((set, get) => {
     get().preferVideo && track.kind === "song" && clipFor.get(track.id) === null ? ("noClip" as const) : null;
   const activeMedia = (): HTMLMediaElement | null => (loaded ? mediaFor(loaded.kind) : null);
 
-  function play(media: HTMLMediaElement) {
+  function play(media: HTMLMediaElement, fallback?: () => void) {
+    const mine = token;
     media.play().catch((err: DOMException) => {
-      if (err.name === "AbortError") return; // src changed mid-start
-      if (err.name === "NotAllowedError") set({ status: "paused" }); // autoplay blocked
+      if (mine !== token || err.name === "AbortError") return; // src changed mid-start
+      if (err.name === "NotAllowedError") { if (fallback) fallback(); else set({ status: "paused" }); } // autoplay blocked
     });
   }
 
-  function load(index: number, opts: { autoplay?: boolean; startAt?: number } = {}) {
+  function load(index: number, opts: { autoplay?: boolean; startAt?: number; disablePreload?: boolean } = {}) {
     if (sessionLost) return;
     manualRadio?.abort();
     const s = get();
     const track = s.queue[index];
     if (!track) return;
+    if (recoveryId !== track.id) { recoveryId = track.id; recoveryCount = 0; }
+    resumeWanted = opts.autoplay !== false;
+    const reusable = !opts.disablePreload && !s.preferVideo && preloaded?.id === track.id && spareAudio && spareAudio.readyState >= 2 && !spareAudio.error;
+    const trace = reusable ? preloaded!.trace : undefined;
+    beginPlaybackTrace(trace); recordPlayback("player.load", { videoId: track.id });
 
     // Video mode on a song: find its music video first, then load whichever fits.
     if (needsClipLookup(track, s.preferVideo)) {
@@ -172,6 +188,10 @@ export const usePlayer = create<PlayerState>((set, get) => {
     }
 
     const kind = kindFor(track);
+    if (kind === "audio" && reusable && spareAudio) {
+      audio.pause(); const previous = audio; audio = spareAudio; spareAudio = previous; preloaded = null;
+      spareAudio.removeAttribute("src"); spareAudio.load(); recordPlayback("player.preloaded_handoff", { videoId: track.id });
+    }
     const media = mediaFor(kind);
     const other = mediaFor(kind === "video" ? "audio" : "video");
     other.pause();
@@ -180,7 +200,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
       other.load();
     }
 
-    token++;
+    token++; loadingAt = Date.now();
     loaded = { id: track.id, kind, quality: s.quality };
     pendingSeek = opts.startAt ?? 0;
     const autoplay = opts.autoplay !== false;
@@ -202,6 +222,18 @@ export const usePlayer = create<PlayerState>((set, get) => {
       if (autoplay) play(media);
     };
     // The server's proxy URL is known right away; on Android the stream is first resolved on the phone.
+    const sourceToken = token;
+    const fallback = () => {
+      if (sourceToken !== token || !spareAudio) return;
+      const previous = audio; audio = spareAudio; spareAudio = previous; preloaded = null;
+      load(index, { ...opts, disablePreload: true });
+    };
+    if (reusable && kind === "audio") {
+      if (pendingSeek > 0) { media.currentTime = pendingSeek; pendingSeek = 0; }
+      if (Number.isFinite(media.duration)) set({ duration: media.duration });
+      if (autoplay) play(media, fallback);
+      setMetadata(track); return;
+    }
     const source = streamSource(mediaIdFor(track, kind), kind, s.quality);
     if (typeof source === "string") start(source);
     else {
@@ -215,7 +247,10 @@ export const usePlayer = create<PlayerState>((set, get) => {
   }
 
   let radioJob: { queue: Track[]; controller: AbortController; promise: Promise<void> } | null = null;
-  let radioAttempt: { queue: Track[]; at: number } | null = null;
+  let radioAttempt: { queue: Track[]; at: number; failed: boolean } | null = null;
+  let radioFailure: Error | null = null;
+  let warmTimer: ReturnType<typeof setTimeout> | null = null;
+  let warmRetries = 0;
   let manualRadio: AbortController | null = null;
 
   function primeRadio(force = false): Promise<void> {
@@ -224,37 +259,62 @@ export const usePlayer = create<PlayerState>((set, get) => {
     if (!s.autoRadio || s.repeat !== "off" || sessionLost) { radioJob?.controller.abort(); return Promise.resolve(); }
     if (radioJob) return radioJob.promise;
     if (!force && (lookahead === 0 || s.queue.length - s.index - 1 >= lookahead)) return Promise.resolve();
-    if (radioAttempt?.queue === s.queue && Date.now() - radioAttempt.at < 30_000) return Promise.resolve();
+    if (radioAttempt?.queue === s.queue && Date.now() - radioAttempt.at < (radioAttempt.failed && force ? 2000 : 30_000)) return Promise.resolve();
     const tail = s.queue.at(-1); if (!tail) return Promise.resolve();
     const queue = s.queue; const controller = new AbortController();
-    radioAttempt = { queue, at: Date.now() };
-    const promise = api.radio(tail.id, controller.signal).then((tracks) => {
+    radioAttempt = { queue, at: Date.now(), failed: false }; radioFailure = null;
+    recordPlayback("radio.request", { videoId: tail.id });
+    const promise = requestRadio((signal) => api.radio(tail.id, signal), controller.signal).then((tracks) => {
       if (controller.signal.aborted || sessionLost || get().queue !== queue || !get().autoRadio || get().repeat !== "off") return;
       const known = new Set(queue.map((track) => track.id));
       const more = tracks.filter((track) => { if (known.has(track.id)) return false; known.add(track.id); return true; }).slice(0, 25);
+      recordPlayback("radio.ready", { videoId: tail.id });
       if (more.length) set((state) => ({ queue: [...queue, ...more], original: state.original ? [...state.original, ...more] : null }));
-    }).catch(() => {}).finally(() => { if (radioJob?.controller === controller) radioJob = null; });
+    }).catch((error) => {
+      if (!controller.signal.aborted && get().queue === queue) {
+        radioFailure = Object.assign(new Error((error as ApiError).failure === "timeout" ? getT().features.networkTimeout : (error as Error).message), { failure: (error as ApiError).failure, code: (error as ApiError).code }); if (radioAttempt?.queue === queue) { radioAttempt.failed = true; radioAttempt.at = Date.now(); }
+        recordPlayback("radio.error", { videoId: tail.id, reason: (error as ApiError).failure ?? "provider" });
+      }
+    }).finally(() => { if (radioJob?.controller === controller) radioJob = null; });
     radioJob = { queue, controller, promise }; return promise;
   }
 
   async function continueWithRadio() {
-    const index = get().index; const mine = token;
+    const index = get().index; const mine = token; recordPlayback("player.advance_radio");
     set({ status: "loading", statusText: "fetchingRadio" });
     await primeRadio(true);
     if (mine !== token || sessionLost) return;
     if (get().queue[index + 1]) { load(index + 1); return; }
-    set({ status: "paused", statusText: null, position: 0 });
+    if (radioFailure) { const error = radioFailure as ApiError; report(error.message || getT().features.radioRetry, error.code, error.failure); }
+    else set({ status: "paused", statusText: null, position: 0 });
   }
 
   function warmQueue() {
     const s = get();
     if (radioJob && (radioJob.queue !== s.queue || !s.autoRadio || s.repeat !== "off")) { radioJob.controller.abort(); radioJob = null; }
     const current = s.queue[s.index];
-    if (sessionLost || !current || (s.status !== "playing" && s.status !== "loading")) return;
     const upcoming = upcomingTracks(s.queue, s.index, 10, s.repeat);
+    if (preloaded && (preloaded.id !== upcoming[0]?.id || s.preferVideo || lookahead === 0)) {
+      spareAudio?.removeAttribute("src"); spareAudio?.load(); preloaded = null;
+    }
+    if (sessionLost || !current || (s.status !== "playing" && s.status !== "loading")) return;
+    const queue = s.queue; const index = s.index;
     if (api.prefetch) void api.prefetch(current.id, upcoming.map((track) => track.id)).then((result) => {
-      if (result && result.lookahead !== lookahead) { lookahead = result.lookahead; void primeRadio(); }
-    }).catch(() => {});
+      if (sessionLost || get().queue !== queue || get().index !== index) return;
+      if (result) lookahead = result.lookahead;
+      const next = upcoming[0];
+      if (lookahead > 0 && next && !s.preferVideo && spareAudio && result?.readyIds?.includes(next.id)) {
+        if (preloaded?.id !== next.id) {
+          const trace = crypto.randomUUID(); preloaded = { id: next.id, trace };
+          const source = streamSource(next.id, "audio", s.quality, trace);
+          if (typeof source === "string") { spareAudio.src = source; spareAudio.load(); recordPlayback("player.preload", { videoId: next.id, traceId: trace }); }
+        }
+        warmRetries = 0;
+      } else if (lookahead > 0 && next && spareAudio && !s.preferVideo && warmRetries++ < 10 && !warmTimer) {
+        warmTimer = setTimeout(() => { warmTimer = null; warmQueue(); }, 1500);
+      }
+      void primeRadio();
+    }).catch((error) => recordPlayback("prepare.error", { reason: (error as ApiError).failure ?? "request" }));
     else for (const track of upcoming.slice(0, 3)) void api.prepare(track.id).catch(() => {});
     void primeRadio();
     if (s.preferVideo && upcoming[0]) void lookupClip(upcoming[0]).then((id) => api.prepare(id ?? upcoming[0]!.id).catch(() => {}));
@@ -264,12 +324,14 @@ export const usePlayer = create<PlayerState>((set, get) => {
     const s = get();
     const track = s.queue[s.index];
     if (!track || recordedToken === token) return;
-    recordedToken = token;
+    recordedToken = token; lastFailure = undefined;
+    recordPlayback("player.playing", { videoId: track.id });
     useLibrary.getState().recordPlay(track);
     warmQueue();
   }
 
   function onEnded() {
+    recordPlayback("player.ended");
     const s = get();
     if (s.repeat === "one") {
       const media = activeMedia();
@@ -286,8 +348,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
   }
 
   /** Shows why a track can't play, then moves on (unless every track would fail the same way). */
-  function report(message: string, code?: ErrorCode) {
-    const mine = token;
+  function report(message: string, code?: ErrorCode, failure?: FailureKind) {
+    const mine = token; lastFailure = failure; recordPlayback("player.error", { reason: failure ?? code ?? "media" });
     set({ status: "error", statusText: { error: message } });
     const track = get().queue[get().index];
     // Tool problems hit every track: offer the fix instead of skipping through the whole queue.
@@ -296,30 +358,41 @@ export const usePlayer = create<PlayerState>((set, get) => {
     toast(
       t.player.cantPlay(track?.title ?? t.player.aTrack, message),
       "error",
-      toolProblem ? { label: code === "tool_missing" ? t.common.install : t.common.update, run: openSettings } : undefined,
+      toolProblem ? { label: code === "tool_missing" ? t.common.install : t.common.update, run: openSettings } : failure === "authentication" || failure === "edge_challenge" ?
+        { label: t.features.signInAgain, run: () => location.reload() } :
+        { label: t.features.downloadDiagnostics, run: () => void saveFile("musike-playback-diagnostics.json", JSON.stringify(playbackEvents(), null, 2)) },
     );
-    if (code !== "tool_missing" && get().index < get().queue.length - 1) {
+    if (!failure && code !== "tool_missing" && get().index < get().queue.length - 1) {
       setTimeout(() => mine === token && get().next(), 2500);
     }
   }
 
   // A stream URL that expired mid-song gets one fresh try from the same spot before giving up.
   let retriedToken = -1;
+  let probingToken = -1;
 
   function onError(media: HTMLMediaElement) {
     const mine = token;
+    if (probingToken === mine) return;
     const url = media.currentSrc || media.src;
+    recordPlayback("media.error");
     if (capabilities.retryOnError && retriedToken !== mine) {
       const at = media.currentTime || get().position;
       load(get().index, { startAt: at, autoplay: true });
       retriedToken = token;
       return;
     }
+    probingToken = mine;
     set({ status: "error" });
-    explainStreamError(url).then(({ message, code }) => {
-      if (mine === token) report(message, code);
-    });
+    explainStreamError(url, media.error?.code).then(({ message, code, failure }) => {
+      if (mine !== token || sessionLost) return;
+      if (recoverableFailure(failure) && !code && retriedToken !== mine && recoveryCount < 2) {
+        recoveryCount++; load(get().index, { startAt: media.currentTime || get().position }); retriedToken = token;
+      } else report(message, code, failure);
+    }).catch(() => { if (mine === token) report(getT().features.networkFailure, undefined, "network"); });
   }
+
+  onLoadingDeadline = () => { loadingAt = Date.now(); const media = activeMedia(); if (media) onError(media); };
 
   function wire(media: HTMLMediaElement) {
     const isActive = () => activeMedia() === media;
@@ -350,7 +423,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
       syncPlaybackState();
     });
     media.addEventListener("waiting", () => {
-      if (isActive() && !media.paused) set({ status: "loading" });
+      if (isActive() && !media.paused) { if (get().status !== "loading") loadingAt = Date.now(); set({ status: "loading" }); recordPlayback("player.waiting"); }
     });
     media.addEventListener("timeupdate", () => {
       if (!isActive() || pendingSeek > 0) return;
@@ -366,6 +439,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     media.addEventListener("error", () => isActive() && media.getAttribute("src") && onError(media));
   }
   wire(audio);
+  if (spareAudio) wire(spareAudio);
   wire(videoEl);
 
   const reloadIfKindChanged = () => {
@@ -498,7 +572,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
       if (stale || s.status === "error") return load(s.index, { startAt: s.position });
       const media = mediaFor(kind);
       if (media.paused) play(media);
-      else media.pause();
+      else { resumeWanted = false; media.pause(); }
     },
 
     next: () => {
@@ -574,10 +648,10 @@ export const usePlayer = create<PlayerState>((set, get) => {
     },
 
     setAutoRadio: (autoRadio) => set({ autoRadio }),
-    warmUpcoming: warmQueue,
+    warmUpcoming: () => { warmRetries = 0; if (warmTimer) { clearTimeout(warmTimer); warmTimer = null; } warmQueue(); },
     stopSession: () => {
-      radioJob?.controller.abort(); manualRadio?.abort(); token++; loaded = null;
-      for (const media of [audio, videoEl]) { media.pause(); media.removeAttribute("src"); media.load(); }
+      radioJob?.controller.abort(); manualRadio?.abort(); if (warmTimer) clearTimeout(warmTimer); token++; loaded = null; resumeWanted = false; preloaded = null;
+      for (const media of [audio, videoEl, ...(spareAudio ? [spareAudio] : [])]) { media.pause(); media.removeAttribute("src"); media.load(); }
       set({ queue: [], original: null, index: 0, status: "idle", statusText: null, position: 0, duration: 0, buffered: 0 });
       systemMedia?.setState({ playing: false, position: 0, duration: 0 });
       if ("mediaSession" in navigator) { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = "none"; }
@@ -620,7 +694,25 @@ addEventListener("musike:unauthorized", () => {
   persist(); sessionLost = true; usePlayer.getState().stopSession();
 });
 addEventListener("pagehide", persist);
-document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && persist());
+function restorePlayback() {
+  recordPlayback("page.resume"); void flushPlaybackEvents();
+  const state = usePlayer.getState(); state.warmUpcoming();
+  if (resumeWanted && state.status === "error" && recoverableFailure(lastFailure) && recoveryCount < 2) {
+    recoveryCount++; usePlayer.getState().toggle();
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  recordPlayback(document.visibilityState === "hidden" ? "page.hidden" : "page.visible");
+  if (document.visibilityState === "hidden") { persist(); usePlayer.getState().warmUpcoming(); void flushPlaybackEvents(); }
+  else restorePlayback();
+});
+addEventListener("online", restorePlayback);
+addEventListener("pageshow", restorePlayback);
+setInterval(() => {
+  const state = usePlayer.getState();
+  if (state.status === "loading" && state.statusText !== "fetchingRadio" && state.statusText !== "findingClip" && loaded && Date.now() - loadingAt > 25_000) onLoadingDeadline();
+  void flushPlaybackEvents();
+}, 5000);
 
 // Media Session: lock-screen, headset and notification controls.
 

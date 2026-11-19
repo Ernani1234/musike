@@ -2,7 +2,7 @@ import { Innertube } from "youtubei.js";
 import { toTrack, text } from "./search.js";
 
 export interface GoogleTokens { access_token: string; refresh_token: string; expires_at: number; }
-export interface SourceTrack { id: string; title: string; artist: string; album?: string; }
+export interface SourceTrack { id: string; title: string; artist: string; album?: string; duration?: number; }
 export interface SourceCollection { id: string; name: string; kind: "playlist" | "album"; tracks: SourceTrack[]; }
 export interface ImportSource { collections: SourceCollection[]; likes: SourceTrack[]; history: SourceTrack[]; unavailable: string[]; }
 const items = (page: any): any[] => {
@@ -10,7 +10,7 @@ const items = (page: any): any[] => {
   return Array.isArray(content) ? content.flatMap((s: any) => s.items ?? s.contents ?? [s]) : content.items ?? content.contents ?? [];
 };
 const track = (item: any): SourceTrack | null => {
-  const t = toTrack(item, "song"); return t ? { id: t.id, title: t.title, artist: t.artist, album: t.album } : null;
+  const t = toTrack(item, "song"); return t ? { id: t.id, title: t.title, artist: t.artist, album: t.album, duration: t.duration } : null;
 };
 async function complete(page: any, limit: number, capped: () => void = () => {}): Promise<any[]> {
   const out: any[] = []; const seen = new Set<string>();

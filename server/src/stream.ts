@@ -1,3 +1,5 @@
+import { openAudioSource, type AudioSourceOptions } from "./audioCache.js";
+import { playbackStage } from "./playbackDiagnostics.js";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
@@ -13,7 +15,7 @@ const PASS_HEADERS = ["content-length", "content-range", "accept-ranges", "last-
  * Proxies a googlevideo stream, forwarding Range so the browser can seek natively.
  * googlevideo URLs are bound to the IP that resolved them, so the bytes must flow through this server.
  */
-export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: string, kind: "audio" | "video") {
+export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: string, kind: "audio" | "video", options?: AudioSourceOptions) {
   const pick = async (fresh: boolean): Promise<StreamFormat> => {
     if (fresh) invalidate(id);
     const resolved = await resolveStreams(id);
@@ -34,15 +36,19 @@ export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: 
     return fetch(fmt.url, { headers, signal: controller.signal });
   };
 
-  let fmt = await pick(false);
-  let upstream = await request(fmt);
+  playbackStage("stream.cold", { videoId: id, warm: false });
+  const chosen = kind === "audio" ? await openAudioSource(id, controller.signal, options?.candidates, options?.transport, typeof req.headers.range === "string" ? req.headers.range : undefined, options?.timeoutMs) : null;
+  let fmt = chosen?.format ?? await pick(false);
+  let upstream = chosen?.response ?? await request(fmt);
   // Expired or rejected URL: resolve again once.
-  if (upstream.status === 403 || upstream.status === 410) {
+  if (!chosen && (upstream.status === 403 || upstream.status === 410)) {
     await upstream.body?.cancel();
     fmt = await pick(true);
     upstream = await request(fmt);
   }
+  if (upstream.status === 416) { reply.code(416); reply.header("content-range", upstream.headers.get("content-range") ?? "bytes */*"); return reply.send(); }
   if (!upstream.ok || !upstream.body) {
+    await upstream.body?.cancel(); controller.abort();
     throw new HttpError(502, msg("streamRefused", { status: upstream.status }), "maybe_outdated");
   }
 
@@ -55,7 +61,11 @@ export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: 
   }
   if (!upstream.headers.get("accept-ranges")) reply.header("accept-ranges", "bytes");
 
+  let bytes = 0; const started = Date.now();
   const body = Readable.fromWeb(upstream.body as any);
+  body.on("data", (chunk: Buffer) => { if (!bytes) playbackStage("stream.first_byte", { videoId: id, warm: false }); bytes += chunk.length; });
+  reply.raw.once("finish", () => playbackStage("stream.complete", { videoId: id, bytes, ms: Date.now() - started, warm: false }));
+  reply.raw.once("close", () => { chosen?.cancel(); if (!reply.raw.writableFinished) playbackStage("stream.disconnected", { videoId: id, bytes }); });
   body.on("error", () => body.destroy());
   return reply.send(body);
 }
@@ -63,6 +73,7 @@ export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: 
 /** Serves a local file with byte-range support (used for cached HD video). */
 export async function serveFile(req: FastifyRequest, reply: FastifyReply, file: string, mime: string) {
   const { size } = await stat(file);
+  playbackStage("stream.cache_hit", { warm: true, bytes: size });
   const range = byteRange(typeof req.headers.range === "string" ? req.headers.range : undefined, size);
 
   reply.header("content-type", mime);

@@ -7,6 +7,16 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
 
 export const en = {
   features: {
+    authExpired: "Your sign-in or gateway session expired. Open Musike again to sign in.", edgeChallenge: "The gateway requires verification. Open Musike again.",
+    networkTimeout: "The connection timed out. Try again.", networkFailure: "Could not reach Musike. Check your connection and try again.",
+    unexpectedResponse: "The gateway returned an unexpected response.", originFailure: "The server or gateway is temporarily unavailable.",
+    matchPending: "Matched, awaiting save",
+    reviewItems: "Show unresolved items",
+    reviewNeeded: "Needs review", progress: "Processed", fetchingLibrary: "Reading your source library", matchingTracks: "Matching and saving tracks",
+    candidate: "Suggested match", confidence: "Confidence", noCandidates: "No reliable candidate was found. You can retry the import.",
+    retryImport: "Retry unresolved items", downloadDiagnostics: "Download playback diagnostics", signInAgain: "Sign in again",
+    radioRetry: "Radio could not load more tracks. Retrying shortly.",
+
     login: "Sign in to Musike", inviteOnly: "Private instance. An administrator invitation is required.",
     phone: "Phone number", invite: "Invite code (first login only)", remember: "Remember me for 30 days",
     otp: "WhatsApp login code", sendCode: "Send code", verify: "Sign in", resend: "Resend code", changePhone: "Change phone number",

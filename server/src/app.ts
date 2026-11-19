@@ -1,3 +1,4 @@
+import { playbackStage, safePlaybackFields, traceId, withPlaybackTrace, type PlaybackFields, type TraceContext } from "./playbackDiagnostics.js";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import path from "node:path";
@@ -19,7 +20,7 @@ import { registerAdmin } from "./adminRoutes.js";
 import { registerAccounts } from "./accountRoutes.js";
 import { Accounts, type AccountOptions } from "./accounts.js";
 import { trustedProxies } from "./proxy.js";
-import { AudioCache } from "./audioCache.js";
+import { AudioCache, type AudioSourceOptions } from "./audioCache.js";
 import { acquireFileLease } from "./cacheBudget.js";
 
 function videoId(params: unknown): string {
@@ -48,13 +49,40 @@ export interface RunningServer {
 }
 
 /** Builds API and static routes without opening a socket, for startup and injection tests. */
-export async function createApp(options: AccountOptions & { trustProxy?: string; google?: GoogleOptions } = {}) {
+export async function createApp(options: AccountOptions & { trustProxy?: string; google?: GoogleOptions; audio?: AudioSourceOptions; onPlaybackEvent?: (event: PlaybackFields) => void } = {}) {
   library.useLibraryStorage(fileStorage());
   const proxy = trustedProxies(options.trustProxy);
   const app = Fastify({ trustProxy: proxy.trust, logger: { level: process.env.LOG_LEVEL ?? "warn", serializers: { req: (request: { method?: string; url?: string; ip?: string }) => ({ method: request.method, path: request.url?.split("?")[0], ip: request.ip }) } } });
-  const audioCache = new AudioCache(undefined, undefined, (message) => app.log.debug(message));
+  const diagnostics = process.env.MUSIKE_PLAYBACK_DIAGNOSTICS === "true";
+  const timingLog = app.log.child({ component: "playback" }, { level: diagnostics ? "info" : "warn" });
+  const contexts = new WeakMap<object, { trace: TraceContext; started: number }>();
+  app.addHook("onRequest", (req, reply, done) => {
+    const id = traceId(req.headers["x-musike-trace"] ?? new URL(req.url, "http://local").searchParams.get("trace"));
+    reply.header("x-musike-request-id", req.id); reply.header("x-musike-trace", id);
+    const trace: TraceContext = { traceId: id, requestId: req.id, emit: (event) => {
+      if (diagnostics) { if (options.onPlaybackEvent) options.onPlaybackEvent({ ...event, ip: req.realClientIp }); else timingLog.info({ event: "playback", ...event, ip: req.realClientIp }); }
+      else if (event.stage?.endsWith("error") || event.status && event.status >= 500) timingLog.warn({ event: "playback", ...event, ip: req.realClientIp });
+    } };
+    contexts.set(req, { trace, started: Date.now() });
+    reply.raw.once("close", () => { if (!reply.raw.writableFinished && /^\/api\/(stream|prepare|queue|radio|video-for)/.test(req.url)) withPlaybackTrace(trace, () => playbackStage("http.disconnected")); });
+    withPlaybackTrace(trace, () => { if (/^\/api\/(stream|prepare|queue|radio|playback|video-for)/.test(req.url)) playbackStage("http.start"); done(); });
+  });
+  app.addHook("onResponse", async (req, reply) => {
+    const context = contexts.get(req);
+    if (context && /^\/api\/(stream|prepare|queue|radio|video-for)/.test(req.url)) withPlaybackTrace(context.trace, () => playbackStage("http.complete", { status: reply.statusCode, ms: Date.now() - context.started }));
+  });
+  const audioCache = new AudioCache(options.audio?.candidates, options.audio?.transport, (message) => app.log.debug(message));
   let accounts: Accounts | null = null;
   let google: GoogleImport | null = null;
+  const streamFailures = new Map<string, { at: number; status: number; error: string; code?: string }>();
+  const failureKey = (req: import("fastify").FastifyRequest, id: string) => `${req.musikeUser?.id ?? "legacy"}:${contexts.get(req)?.trace.traceId}:${id}`;
+  const probeStream = (req: import("fastify").FastifyRequest, reply: import("fastify").FastifyReply, id: string) => {
+    if ((req.query as { probe?: string }).probe !== "1") return false;
+    const key = failureKey(req, id); const failure = streamFailures.get(key);
+    if (failure && Date.now() - failure.at < 60_000) reply.code(failure.status).send({ error: failure.error, code: failure.code });
+    else { streamFailures.delete(key); reply.send({ ok: true }); }
+    playbackStage("stream.probe", { videoId: id, status: failure?.status ?? 200 }); return true;
+  };
   app.addHook("onClose", async () => { await google?.close(); await audioCache.close(); await accounts?.close(); });
 
   app.setErrorHandler((err, req, reply) => {
@@ -66,6 +94,11 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
     }
     // Musike's own errors are translated into the language the app asked for.
     const error = accounts && status >= 500 && !(e instanceof HttpError) ? "Request failed" : e instanceof HttpError ? tr(langOf(req), e.text) : e.message;
+    if (req.routeOptions.url?.startsWith("/api/stream/") && /^[-\w]{11}$/.test((req.params as { id?: string })?.id ?? "")) {
+      for (const [key, value] of streamFailures) if (Date.now() - value.at >= 60_000) streamFailures.delete(key);
+      if (streamFailures.size >= 200) streamFailures.delete(streamFailures.keys().next().value!);
+      streamFailures.set(failureKey(req, (req.params as { id: string }).id), { at: Date.now(), status, error, code: e instanceof HttpError ? e.code : undefined });
+    }
     if (!reply.sent) reply.code(status).send({ error, code: e instanceof HttpError ? e.code : undefined });
   });
 
@@ -112,7 +145,13 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
     return { suggestions: await suggestions(q.trim().slice(0, 100), langOf(req)).catch(() => []) };
   });
 
-  app.get("/api/radio/:id", async (req) => ({ tracks: await radio(videoId(req.params)) }));
+  app.get("/api/radio/:id", async (req, reply) => {
+    const id = videoId(req.params);
+    const controller = new AbortController(); reply.raw.once("close", () => { if (!reply.raw.writableFinished) controller.abort(); });
+    playbackStage("radio.start", { videoId: id });
+    try { const tracks = await radio(id, controller.signal); playbackStage("radio.complete", { items: tracks.length }); return { tracks }; }
+    catch { playbackStage("radio.error", { reason: controller.signal.aborted ? "cancelled" : "timeout_or_provider" }); throw new HttpError(504, msg("radioTimeout")); }
+  });
 
   // Browse by genre: genre → its artists or all its songs → an artist's top songs
 
@@ -159,7 +198,26 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
   });
 
   // Playback
-  app.get("/api/playback/settings", async () => ({ lookahead: config.lookahead, audioQuality: config.audioQuality, videoQuality: config.videoQuality }));
+  app.get("/api/playback/settings", async () => ({ lookahead: config.lookahead, audioQuality: config.audioQuality, videoQuality: config.videoQuality, diagnostics }));
+  const telemetryBuckets = new Map<string, { at: number; count: number }>();
+  app.post("/api/playback/events", { bodyLimit: 16 * 1024, schema: { body: { type: "object", required: ["events"], additionalProperties: false,
+    properties: { events: { type: "array", maxItems: 40, items: { type: "object", required: ["stage", "traceId", "at"], additionalProperties: false,
+      properties: { traceId: { type: "string", pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" }, stage: { type: "string", pattern: "^[A-Za-z0-9_.-]{1,50}$" },
+        videoId: { type: "string", pattern: "^[A-Za-z0-9_-]{11}$" }, at: { type: "number" }, ms: { type: "number" }, status: { type: "integer" },
+        edgeRay: { type: "string", pattern: "^[0-9a-fA-F]{16,32}-[A-Za-z]{3}$" }, reason: { type: "string", pattern: "^[A-Za-z0-9_-]{1,50}$" }, visibility: { type: "string", enum: ["visible", "hidden", "prerender", "unknown"] } } } } } } } }, async (req, reply) => {
+    if (!diagnostics) return reply.code(204).send();
+    const key = req.musikeUser?.id ?? req.realClientIp; const now = Date.now();
+    for (const [id, bucket] of telemetryBuckets) if (now - bucket.at >= 60_000) telemetryBuckets.delete(id);
+    if (!telemetryBuckets.has(key) && telemetryBuckets.size >= 128) return reply.code(429).send({ error: "Diagnostic capacity reached" });
+    const bucket = telemetryBuckets.get(key) ?? { at: now, count: 0 }; const events = (req.body as { events: PlaybackFields[] }).events;
+    if (bucket.count + events.length > 240) return reply.code(429).send({ error: "Diagnostic rate limit reached" });
+    bucket.count += events.length; telemetryBuckets.set(key, bucket);
+    for (const event of events) {
+      const clean = { ...safePlaybackFields({ ...event, clientAt: event.at, at: now }), requestId: req.id, ip: req.realClientIp };
+      if (options.onPlaybackEvent) options.onPlaybackEvent(clean); else timingLog.info({ event: "playback.client", ...clean });
+    }
+    return reply.code(204).send();
+  });
   app.post("/api/queue/prepare", { schema: { body: {
     type: "object", required: ["clientId", "currentId", "upcomingIds"], additionalProperties: false,
     properties: { revision: { type: "integer", minimum: 0, maximum: 9007199254740991 }, clientId: { type: "string", pattern: "^[a-zA-Z0-9_-]{8,80}$" }, currentId: { type: "string", pattern: "^[a-zA-Z0-9_-]{11}$" },
@@ -167,7 +225,9 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
   } } }, async (req) => {
     const body = req.body as { clientId: string; currentId: string; upcomingIds: string[]; revision?: number };
     audioCache.update(`${req.musikeUser?.id ?? "legacy"}:${body.clientId}`, body.currentId, body.upcomingIds, config.lookahead, body.revision);
-    return { accepted: true, lookahead: config.lookahead };
+    const upcoming = [...new Set(body.upcomingIds)].filter((id) => id !== body.currentId).slice(0, config.lookahead);
+    const readyIds = (await Promise.all(upcoming.map(async (id) => await audioCache.find(id) ? id : null))).filter((id): id is string => !!id);
+    return { accepted: true, lookahead: config.lookahead, readyIds };
   });
 
   /** Resolves stream URLs ahead of time so the next track starts instantly. */
@@ -178,6 +238,7 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
 
   app.get("/api/stream/:id/audio", async (req, reply) => {
     const id = videoId(req.params);
+    if (probeStream(req, reply, id)) return reply;
     const release = await acquireFileLease(path.join(config.cacheDir, `${id}.audio.bin`));
     reply.raw.once("close", release); reply.raw.once("finish", release);
     const cached = await audioCache.find(id);
@@ -185,11 +246,12 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
       return serveFile(req, reply, cached.file, cached.mime);
     }
     release();
-    return proxyStream(req, reply, id, "audio");
+    return proxyStream(req, reply, id, "audio", options.audio);
   });
 
   app.get("/api/stream/:id/video", async (req, reply) => {
     const id = videoId(req.params);
+    if (probeStream(req, reply, id)) return reply;
     const release = await acquireFileLease(path.join(config.cacheDir, `${id}.720.mp4`));
     reply.raw.once("close", release); reply.raw.once("finish", release);
     const { q } = req.query as { q?: string };

@@ -114,9 +114,9 @@ export const api: MusikeApi = {
 };
 
 /** On the phone, the media element plays YouTube's stream directly: resolved here, no proxy needed. */
-export const streamSource = (id: string): Promise<string> => resolveAudio(id).then((r) => r.url);
+export const streamSource = (id: string, _kind?: string, _quality?: string, _trace?: string): Promise<string> => resolveAudio(id).then((r) => r.url);
 
-export async function explainStreamError(url: string): Promise<{ message: string }> {
+export async function explainStreamError(url: string, _mediaCode?: number): Promise<{ message: string }> {
   forgetUrl(url);
   return { message: navigator.onLine ? getT().player.streamFailed : getT().player.offline };
 }

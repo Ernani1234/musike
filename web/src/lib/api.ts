@@ -1,3 +1,4 @@
+import { beginPlaybackTrace, playbackTrace, recordPlayback, responseFailure, configurePlaybackDiagnostics, type FailureKind } from "./playbackDiagnostics";
 import { getLang, getT } from "../i18n";
 import {
   ApiError,
@@ -18,22 +19,37 @@ export * from "./apiTypes";
 /** The server answers errors (and YouTube Music answers names, like genres) in the app's language. */
 const LANG_HEADER = "x-musike-lang";
 
+const failureText = (failure: FailureKind) => {
+  const f = getT().features;
+  return failure === "authentication" ? f.authExpired : failure === "edge_challenge" ? f.edgeChallenge : failure === "timeout" ? f.networkTimeout : failure === "unexpected_response" ? f.unexpectedResponse : failure === "server" ? f.originFailure : f.networkFailure;
+};
 async function request<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
-  const { json, ...rest } = init ?? {};
-  const res = await fetch(path, {
-    ...rest,
-    headers: {
-      [LANG_HEADER]: getLang(),
-      "x-musike-request": "1",
-      ...(json !== undefined ? { "content-type": "application/json" } : {}),
-      ...(rest.headers as Record<string, string> | undefined),
-    },
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  });
+  const { json, ...rest } = init ?? {}; const started = Date.now(); const trace = playbackTrace() || beginPlaybackTrace();
+  const media = /^\/api\/(radio|prepare|queue|video-for)/.test(path);
+  const signal = media ? AbortSignal.any([...(rest.signal ? [rest.signal] : []), AbortSignal.timeout(20_000)]) : rest.signal;
+  recordPlayback("http.start", { traceId: trace });
+  let res: Response;
+  try { res = await fetch(path, { ...rest, redirect: "manual", credentials: "same-origin", signal, headers: {
+    [LANG_HEADER]: getLang(), "x-musike-request": "1", ...(trace ? { "x-musike-trace": trace } : {}),
+    ...(json !== undefined ? { "content-type": "application/json" } : {}), ...(rest.headers as Record<string, string> | undefined),
+  }, body: json !== undefined ? JSON.stringify(json) : rest.body }); }
+  catch (error) {
+    if (rest.signal?.aborted) throw error;
+    const failure = signal?.aborted ? "timeout" : "network";
+    recordPlayback("http.error", { traceId: trace, ms: Date.now() - started, reason: failure });
+    throw new ApiError(0, failureText(failure), undefined, failure, trace);
+  }
+  recordPlayback("http.response", { traceId: trace, status: res.status, ms: Date.now() - started, edgeRay: res.headers.get("cf-ray") ?? undefined });
   if (res.status === 204) return undefined as T;
-  const body = await res.json().catch(() => ({}));
+  const failure = responseFailure(res);
+  if (failure && !res.headers.get("content-type")?.includes("json")) {
+    await res.body?.cancel(); recordPlayback("http.error", { traceId: trace, reason: failure, status: res.status });
+    throw new ApiError(res.status, failureText(failure), undefined, failure, trace);
+  }
+  const body = await res.json().catch(() => null);
   if (res.status === 401) window.dispatchEvent(new Event("musike:unauthorized"));
-  if (!res.ok) throw new ApiError(res.status, body.error ?? getT().player.httpError(res.status), body.code);
+  if (!body) throw new ApiError(res.status, failureText("unexpected_response"), undefined, "unexpected_response", trace);
+  if (!res.ok) throw new ApiError(res.status, body.error ?? getT().player.httpError(res.status), body.code, failure ?? undefined, trace);
   return body as T;
 }
 
@@ -43,8 +59,16 @@ const clientId = (() => {
 })();
 let prefetchRevision = Date.now() * 1000;
 export const api: MusikeApi = {
-  playbackSettings: () => request("/api/playback/settings"),
-  prefetch: (currentId, upcomingIds) => request<{ lookahead: number }>("/api/queue/prepare", { method: "POST", json: { clientId, currentId, upcomingIds, revision: ++prefetchRevision } }),
+  playbackSettings: async () => {
+    const settings = await request<{ lookahead: number; videoQuality: "sd" | "hd"; diagnostics?: boolean }>("/api/playback/settings");
+    configurePlaybackDiagnostics(!!settings.diagnostics, async (events) => {
+      const response = await fetch("/api/playback/events", { method: "POST", redirect: "manual", credentials: "same-origin", signal: AbortSignal.timeout(5000),
+        headers: { "content-type": "application/json", "x-musike-request": "1" }, body: JSON.stringify({ events }) });
+      if (!response.ok || response.redirected) throw new Error("Diagnostics unavailable");
+    });
+    return settings;
+  },
+  prefetch: (currentId, upcomingIds) => request<{ lookahead: number; readyIds?: string[] }>("/api/queue/prepare", { method: "POST", json: { clientId, currentId, upcomingIds, revision: ++prefetchRevision } }),
   search: (q: string, type: "song" | "video", signal?: AbortSignal) =>
     request<{ tracks: Track[] }>(`/api/search?q=${encodeURIComponent(q)}&type=${type}`, { signal }).then((r) => r.tracks),
   suggest: (q: string, signal?: AbortSignal) =>
@@ -91,8 +115,8 @@ export const api: MusikeApi = {
 };
 
 /** What a media element plays for a track: here, the server's stream proxy. The Android backend resolves it on the phone. */
-export const streamSource = (id: string, kind: "audio" | "video", quality: "sd" | "hd"): string | Promise<string> =>
-  kind === "audio" ? `/api/stream/${id}/audio` : `/api/stream/${id}/video?q=${quality}`;
+export const streamSource = (id: string, kind: "audio" | "video", quality: "sd" | "hd", trace = playbackTrace()): string | Promise<string> =>
+  kind === "audio" ? `/api/stream/${id}/audio?trace=${encodeURIComponent(trace)}` : `/api/stream/${id}/video?q=${quality}&trace=${encodeURIComponent(trace)}`;
 
 /** Saves a text file the way this platform does it: a browser download (the desktop app shows "Save as"). */
 export async function saveFile(name: string, text: string) {
@@ -111,14 +135,24 @@ export const systemMedia: SystemMedia | null = null;
 export const capabilities = { video: true, engineSettings: true, retryOnError: false };
 
 /** Media elements hide the HTTP error body; fetch it to show the real reason. */
-export async function explainStreamError(url: string): Promise<{ message: string; code?: ErrorCode }> {
+export async function explainStreamError(url: string, mediaCode?: number): Promise<{ message: string; code?: ErrorCode; failure?: FailureKind }> {
   const t = getT();
   try {
-    const res = await fetch(url, { headers: { Range: "bytes=0-0", [LANG_HEADER]: getLang() } });
-    if (res.ok) return { message: t.player.browserCantPlay };
+    const probe = new URL(url, location.href); probe.searchParams.set("probe", "1");
+    const res = await fetch(probe, { redirect: "manual", credentials: "same-origin", signal: AbortSignal.timeout(8000), headers: { [LANG_HEADER]: getLang() } });
+    const failure = responseFailure(res);
+    if (!res.headers.get("content-type")?.includes("json")) {
+      await res.body?.cancel(); const kind = failure ?? "unexpected_response";
+      recordPlayback("media.probe_error", { status: res.status, reason: kind, edgeRay: res.headers.get("cf-ray") ?? undefined });
+      return { message: failureText(kind), failure: kind };
+    }
     const body = await res.json().catch(() => ({}));
-    return { message: body.error ?? t.player.httpError(res.status), code: body.code };
-  } catch {
-    return { message: t.player.serverDown };
+    if (res.status === 401) window.dispatchEvent(new Event("musike:unauthorized"));
+    if (res.ok) return mediaCode === 2 ? { message: failureText("network"), failure: "network" } : { message: t.player.browserCantPlay };
+    recordPlayback("media.probe_error", { status: res.status, reason: failure ?? "server", edgeRay: res.headers.get("cf-ray") ?? undefined });
+    return { message: body.error ?? failureText(failure ?? "server"), code: body.code, failure: failure ?? undefined };
+  } catch (error) {
+    const failure = (error as Error).name === "TimeoutError" ? "timeout" : "network";
+    recordPlayback("media.probe_error", { reason: failure }); return { message: failureText(failure), failure };
   }
 }

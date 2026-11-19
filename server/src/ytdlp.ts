@@ -1,3 +1,4 @@
+import { playbackStage } from "./playbackDiagnostics.js";
 import { mkdir, rename, rm, stat, utimes } from "node:fs/promises";
 import path from "node:path";
 import { ensureComponent } from "./bootstrap.js";
@@ -8,7 +9,7 @@ import { msg } from "./i18n.js";
 import { HttpError } from "./types.js";
 import { trimCache, mutateCache } from "./cacheBudget.js";
 import { ProcessError, runProcess, stopProcesses } from "./process.js";
-import { QueueError, TaskQueue } from "./taskQueue.js";
+import { QueueError, TaskQueue, waitForSignal } from "./taskQueue.js";
 
 export interface StreamFormat {
   formatId: string;
@@ -55,18 +56,22 @@ export function holdDuring<T>(job: Promise<T>): Promise<T> {
   return p;
 }
 
-async function run(args: string[], timeoutMs: number): Promise<string> {
+async function run(args: string[], timeoutMs: number, signal?: AbortSignal): Promise<string> {
+  const queued = Date.now(); playbackStage("resolve.queued");
   try {
     return await processes.run(async () => {
+      playbackStage("resolve.start", { ms: Date.now() - queued });
       if (maintenance) await maintenance.catch(() => {});
       if (closing) throw new QueueError("closed");
       const { ytdlp, env } = tools();
       if (!ytdlp) throw new HttpError(503, msg("ytdlpMissing"), "tool_missing");
-      const result = await runProcess(ytdlp, [...config.ytdlpExtraArgs, ...args], env, timeoutMs);
+      const result = await runProcess(ytdlp, [...config.ytdlpExtraArgs, ...args], env, timeoutMs, undefined, signal);
+      playbackStage("resolve.complete", { ms: Date.now() - queued, status: result.code ?? 1 });
       if (result.code !== 0) throw toHttpError(result.stderr);
       return result.stdout;
-    });
+    }, signal);
   } catch (err) {
+    if (signal?.aborted || err instanceof ProcessError && err.reason === "cancelled") throw new DOMException("Aborted", "AbortError");
     if (err instanceof QueueError || (err instanceof ProcessError && err.reason === "shutdown")) {
       throw new HttpError(503, msg("serverBusy"), "server_busy");
     }
@@ -144,7 +149,7 @@ function expiryOf(url: string): number {
   return Number.isFinite(expire) && expire > 0 ? expire * 1000 - 10 * 60_000 : fallback;
 }
 
-const cache = new Map<string, Promise<Resolved>>();
+const cache = new Map<string, { work: Promise<Resolved>; controller: AbortController; consumers: Set<symbol> }>();
 const resolvedAt = new Map<string, Resolved>();
 const RESOLVED_LIMIT = 200;
 
@@ -153,12 +158,27 @@ const RESOLVED_LIMIT = 200;
 let directClients: string[] | null = null;
 let directClientsAt = 0;
 
+let clientsRefresh: Promise<void> | null = null;
 export async function clientsForDirect(): Promise<string[]> {
-  if (Date.now() - directClientsAt > 6 * 3600_000) {
+  // The published client list is advisory. A cold song must not wait for its network refresh.
+  if (Date.now() - directClientsAt > 6 * 3600_000 && !clientsRefresh) {
     directClientsAt = Date.now();
-    directClients = (await fetchRemoteClients()) ?? directClients;
+    clientsRefresh = fetchRemoteClients().then((clients) => { directClients = clients ?? directClients; }).finally(() => { clientsRefresh = null; });
   }
   return directClients ?? DEFAULT_CLIENTS;
+}
+
+/** Try immediately; if a stale/default client fails, wait for the one coalesced advisory refresh and retry changed clients once. */
+export async function resolveDirectAudio(id: string, signal?: AbortSignal, resolver = directAudio) {
+  const clients = await clientsForDirect();
+  try { return await resolver(id, clients, undefined, signal); }
+  catch (error) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    if (clientsRefresh) await (signal ? waitForSignal(clientsRefresh, signal) : clientsRefresh);
+    const fresh = directClients ?? DEFAULT_CLIENTS;
+    if (fresh.join("|") === clients.join("|")) throw error;
+    return resolver(id, fresh, undefined, signal);
+  }
 }
 
 /**
@@ -166,12 +186,12 @@ export async function clientsForDirect(): Promise<string[]> {
  * change can break it until it's updated. Asking YouTube for the audio directly often still works. Video stays
  * yt-dlp's job.
  */
-async function resolveDirect(id: string, ytdlpError: unknown): Promise<Resolved> {
+async function resolveDirect(id: string, ytdlpError: unknown, signal?: AbortSignal): Promise<Resolved> {
   if (ytdlpError instanceof HttpError && ytdlpError.code === "server_busy") throw ytdlpError;
   // Removed, private or age-restricted videos won't play any other way either.
   if (ytdlpError instanceof HttpError && (ytdlpError.status === 403 || ytdlpError.status === 404)) throw ytdlpError;
   try {
-    const direct = await directAudio(id, await clientsForDirect());
+    const direct = await resolveDirectAudio(id, signal);
     return {
       id,
       title: direct.title,
@@ -184,13 +204,15 @@ async function resolveDirect(id: string, ytdlpError: unknown): Promise<Resolved>
   }
 }
 
-export function resolveStreams(id: string): Promise<Resolved> {
+export async function resolveStreams(id: string, signal?: AbortSignal): Promise<Resolved> {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
   const done = resolvedAt.get(id);
   if (done && done.expiresAt > Date.now()) return Promise.resolve(done);
-  const inflight = cache.get(id);
-  if (inflight) return inflight;
-
-  const job = run(["-J", "--no-playlist", "--no-warnings", `https://www.youtube.com/watch?v=${id}`], RESOLVE_TIMEOUT_MS)
+  let inflight = cache.get(id);
+  if (inflight?.controller.signal.aborted) { await inflight.work.catch(() => {}); return resolveStreams(id, signal); }
+  if (!inflight) {
+  const controller = new AbortController();
+  const job = run(["-J", "--no-playlist", "--no-warnings", `https://www.youtube.com/watch?v=${id}`], RESOLVE_TIMEOUT_MS, controller.signal)
     .then((stdout): Resolved => {
       const info = JSON.parse(stdout) as { title: string; duration?: number; formats: RawFormat[] };
       const audio = pickAudio(info.formats);
@@ -205,17 +227,19 @@ export function resolveStreams(id: string): Promise<Resolved> {
         expiresAt: expiryOf(audio.url!),
       };
     })
-    .catch((err) => resolveDirect(id, err))
+    .catch((err) => { if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError"); return resolveDirect(id, err, controller.signal); })
     .then((resolved) => {
       for (const [key, value] of resolvedAt) if (value.expiresAt <= Date.now()) resolvedAt.delete(key);
       if (resolvedAt.size >= RESOLVED_LIMIT) resolvedAt.delete(resolvedAt.keys().next().value!);
       resolvedAt.set(id, resolved);
       return resolved;
     })
-    .finally(() => cache.delete(id));
-
-  cache.set(id, job);
-  return job;
+    .finally(() => { if (cache.get(id)?.controller === controller) cache.delete(id); });
+  inflight = { work: job, controller, consumers: new Set() }; cache.set(id, inflight);
+  }
+  const consumer = Symbol(); inflight.consumers.add(consumer);
+  try { return await (signal ? waitForSignal(inflight.work, signal) : inflight.work); }
+  finally { inflight.consumers.delete(consumer); if (!inflight.consumers.size) inflight.controller.abort(); }
 }
 
 export function invalidate(id: string) {
@@ -286,8 +310,8 @@ export function downloadHd(id: string): Promise<string> {
   return job;
 }
 
-export async function ytdlpSearch(query: string, limit = 20) {
-  const stdout = await run(["-J", "--flat-playlist", "--no-warnings", `ytsearch${limit}:${query}`], RESOLVE_TIMEOUT_MS);
+export async function ytdlpSearch(query: string, limit = 20, signal?: AbortSignal) {
+  const stdout = await run(["-J", "--flat-playlist", "--no-warnings", `ytsearch${limit}:${query}`], RESOLVE_TIMEOUT_MS, signal);
   const data = JSON.parse(stdout) as {
     entries: { id: string; title: string; duration?: number; channel?: string; uploader?: string }[];
   };

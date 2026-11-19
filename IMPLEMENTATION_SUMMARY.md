@@ -1,5 +1,8 @@
 # Musike implementation summary — four-phase WIP
 
+> Historical 18 November package record. Current targeted fixes and contracts are documented in BUGFIX-IMPACT.md, ARCHITECTURE.md and TEST-RESULTS.md; follow the current DEPLOYMENT-NOTES.md for the approved wrapper exception.
+
+
 Base: Azan-Shah/musike main `85843fd`, applied without upstream rebase. The delivered source overlay retains all earlier performance/audit/direct-audio fixes and adds configurable full-byte queue caching, optional invite-only WhatsApp accounts with SQLite libraries, admin/ops with trusted IP attribution, and optional per-user Google imports/daily top-ups. Package version remains 1.5.1; no release/deployment was performed.
 
 Auth is off by default. Enabling it migrates shared JSON to the ADMIN_PHONE owner transactionally with a retained backup. SQLite WAL executes only inside a worker thread; no new npm dependency version or database container is needed. Existing standalone-native JSON and device preferences remain separate. New UI reuses the existing CSS tokens/React patterns and typed English translation keys, with explicit English fallback for Portuguese feature strings.

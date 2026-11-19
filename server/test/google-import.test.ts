@@ -134,3 +134,75 @@ test("HTTP OAuth callback requires the originating account's session cookie", as
     assert.equal(response.statusCode, 401);
   } finally { await app?.close(); await f.cleanup(); }
 });
+
+test("import status exposes durable live item progress and owner-scoped cursor deltas before completion", async () => {
+  const f = await fixture(); let release!: () => void; const held = new Promise<void>((resolve) => { release = resolve; });
+  f.googleOptions.resolve = async (item) => { if (item.id === sourceTrack(1).id) await held; return { ...item, duration: 10, thumb: "", art: "", kind: "song" }; };
+  try {
+    await f.connect(f.user); const { runId } = await f.service.start(f.user);
+    let running = await f.service.status(f.user, 0, runId);
+    for (let n = 0; n < 200 && running.report?.progress.processed < 1; n++) { await new Promise((resolve) => setTimeout(resolve, 5)); running = await f.service.status(f.user, 0, runId); }
+    assert.equal(running.status, "running"); assert.equal(running.report.progress.total, 6);
+    assert.equal(running.report.progress.processed, 1); assert.equal(running.report.imported, 1);
+    assert.equal(running.report.items[0].sourceId, sourceTrack(2).id);
+    assert.equal((await f.service.status(f.user, 1, runId)).report.items.length, 0);
+    assert.equal((await f.service.status("another-owner", 0, runId)).report, null);
+    release(); const completed = await f.wait(f.user);
+    assert.equal(completed.report.progress.phase, "complete"); assert.equal(completed.report.progress.processed, 6);
+    const delta = await f.service.status(f.user, 1, runId); assert.equal(delta.report.items.length, 5); assert.equal(delta.itemOffset, 1);
+  } finally { release(); await f.cleanup(); }
+});
+
+test("provider failures stay reviewable and re-import tops up only missing items", async () => {
+  const f = await fixture(); const resolve = f.googleOptions.resolve;
+  f.googleOptions.resolve = async (item) => { if (item.id === sourceTrack(1).id) throw new Error("fixture provider failure"); return resolve(item); };
+  try {
+    await f.connect(f.user); await f.service.start(f.user); const first = await f.wait(f.user);
+    assert.equal(first.status, "partial"); assert.equal(first.report.reviewNeeded, 1); assert.equal(first.report.notFound, 0);
+    assert.equal(first.report.items.find((item: any) => item.sourceId === sourceTrack(1).id).reason, "provider-unavailable");
+    f.googleOptions.resolve = resolve; f.advance(1);
+    await f.service.start(f.user); const retry = await f.wait(f.user);
+    assert.equal(retry.report.imported, 1); assert.equal(retry.report.alreadyPresent, 5);
+    assert.equal((await f.accounts.library(f.user).getLibrary()).playlists.length, 2);
+  } finally { await f.cleanup(); }
+});
+
+test("original video validation precedes ordered search fallbacks without using Google playback tokens", async () => {
+  const f = await fixture(); const modes: string[] = []; let originals = 0;
+  const service = new GoogleImport(f.accounts, { ...f.googleOptions, resolve: undefined,
+    original: async (item) => { originals++; return item.id === sourceTrack(2).id ? { ...item, duration: 10, thumb: "", art: "", kind: "song" } : null; },
+    candidates: async (item, mode) => { modes.push(mode); return mode === "music" ? [{ id: String(Number(item.id) + 100).padStart(11, "0"), title: item.title, channel: item.artist }] : []; },
+  });
+  try {
+    await f.connect(f.user); await service.start(f.user);
+    for (let n = 0; n < 500 && (await service.status(f.user)).status === "running"; n++) await new Promise((r) => setTimeout(r, 5));
+    const result = await service.status(f.user); assert.equal(result.report.imported, 6);
+    assert.equal(originals, 6); assert.ok(modes.includes("music")); assert.equal(modes.includes("title"), false);
+  } finally { await service.close(); await f.cleanup(); }
+});
+
+test("ambiguous replacements expose candidates rather than silently importing a different recording", async () => {
+  const f = await fixture();
+  const service = new GoogleImport(f.accounts, { ...f.googleOptions, resolve: undefined, original: async () => null,
+    candidates: async (item) => [{ id: "candidate01", title: item.title, channel: item.artist }, { id: "candidate02", title: item.title, channel: item.artist }],
+  });
+  try {
+    await f.connect(f.user); await service.start(f.user);
+    for (let n = 0; n < 500 && (await service.status(f.user)).status === "running"; n++) await new Promise((r) => setTimeout(r, 5));
+    const result = await service.status(f.user); assert.equal(result.status, "partial");
+    assert.equal(result.report.imported, 0); assert.equal(result.report.reviewNeeded, 6);
+    assert.ok(result.report.items.every((item: any) => item.status === "needs-review" && item.candidates.length === 2));
+  } finally { await service.close(); await f.cleanup(); }
+});
+
+test("restart recovery preserves completed item checkpoints rather than erasing their report", async () => {
+  const f = await fixture();
+  try {
+    const report = { items: [{ sourceId: "fixture", title: "Completed fixture", kind: "like", status: "imported" }], unavailable: [], imported: 1,
+      progress: { phase: "matching", processed: 1, total: 2, startedAt: Date.now(), updatedAt: Date.now() } };
+    await f.accounts.db.run("INSERT INTO import_runs(id,user_id,status,created_at,report) VALUES(?,?,'running',?,?)", [randomUUID(), f.user, Date.now(), JSON.stringify(report)]);
+    await f.service.recover(); const status = await f.service.status(f.user);
+    assert.equal(status.status, "error"); assert.equal(status.report.imported, 1); assert.equal(status.report.items[0].title, "Completed fixture");
+    assert.equal(status.report.progress.phase, "cancelled");
+  } finally { await f.cleanup(); }
+});

@@ -33,8 +33,8 @@ test("audio shares budget with HD files, protects leases and stops without re-do
   const dir = await mkdtemp(path.join(tmpdir(), "musike-budget-"));
   const previous = { cacheDir: config.cacheDir, cacheMaxBytes: config.cacheMaxBytes };
   config.cacheDir = dir; config.cacheMaxBytes = 400;
-  let fetches = 0;
-  const cache = new AudioCache(async () => [format], (async () => { fetches++; return new Response("x".repeat(200), { headers: { "content-length": "200" } }); }) as typeof fetch);
+  let fetches = 0; let stopped = false;
+  const cache = new AudioCache(async () => [format], (async () => { fetches++; return new Response("x".repeat(200), { headers: { "content-length": "200" } }); }) as typeof fetch, () => { stopped = true; });
   await writeFile(path.join(dir, `${id(9)}.720.mp4`), "h".repeat(64));
   const releaseHd = leaseFile(path.join(dir, `${id(9)}.720.mp4`));
   needWindow("test", [id(0), id(1), id(2), id(3)]);
@@ -46,7 +46,8 @@ test("audio shares budget with HD files, protects leases and stops without re-do
     assert.ok(await cache.find(id(1)));
     assert.ok((await cacheUsage()).bytes <= 400);
     cache.update("client", id(0), [id(1), id(2), id(3)], 3);
-    for (let i = 0; i < 30; i++) await pause();
+    for (let i = 0; i < 200 && !stopped; i++) await new Promise((resolve) => setTimeout(resolve, 2));
+    assert.ok(stopped);
     const before = fetches;
     cache.update("client", id(0), [id(1), id(2), id(3)], 3);
     for (let i = 0; i < 5; i++) await pause();

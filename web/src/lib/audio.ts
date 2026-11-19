@@ -216,3 +216,11 @@ export function createAudio(): HTMLAudioElement {
   }
   return new NativeAudio(nativeBridge) as unknown as HTMLAudioElement;
 }
+
+/** A spare browser element may buffer authenticated same-origin audio before Android backgrounds the page.
+ * Standalone/native bridges and iOS keep their existing single-player path. This cannot keep a killed PWA alive. */
+export function createUpcomingAudio(): HTMLAudioElement | null {
+  if (nativeBridge || !["https:", "http:"].includes(location.protocol) || /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+    navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) return null;
+  const audio = new Audio(); audio.preload = "auto"; return audio;
+}

@@ -44,3 +44,13 @@ export class TaskQueue {
     for (const item of this.waiting.splice(0)) { clearTimeout(item.timer); item.cleanup(); item.reject(new QueueError("closed")); }
   }
 }
+
+/** Stop waiting without changing another consumer's underlying shared work. */
+export function waitForSignal<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) { void work.catch(() => {}); return Promise.reject(new DOMException("Aborted", "AbortError")); }
+  return new Promise((resolve, reject) => {
+    const cancel = () => reject(new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", cancel, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", cancel));
+  });
+}
