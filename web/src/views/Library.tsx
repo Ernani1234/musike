@@ -1,7 +1,7 @@
 import { PlaylistImportDialog } from "../components/PlaylistImportDialog";
 import { socialState, type SocialState } from "../lib/social";
 import { useSession } from "../stores/session";
-import { DatabaseIcon, PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Cover, type CoverKind } from "../components/Cover";
@@ -10,9 +10,7 @@ import { PageHeader } from "../components/Page";
 import { useT } from "../i18n";
 import { paths } from "../lib/routes";
 import type { Track } from "../lib/types";
-import { IconButton } from "../components/IconButton";
 import { useLibrary } from "../stores/library";
-import { useUi } from "../stores/ui";
 
 function Entry({ to, name, kind, tracks, sub }: { to: string; name: string; kind: CoverKind; tracks: Track[]; sub: string }) {
   return (
@@ -46,7 +44,6 @@ export default function Library() {
   const history = useLibrary((s) => s.history);
   const createPlaylist = useLibrary((s) => s.createPlaylist);
   const [creating, setCreating] = useState(false);
-  const setSettingsOpen = useUi((s) => s.setSettingsOpen);
   const navigate = useNavigate();
   const t = useT();
 
@@ -57,9 +54,6 @@ export default function Library() {
         actions={
           <>
           {user && <button type="button" className="button-secondary text-xs" onClick={() => setImporting(true)}>{t.collaboration.importPlaylist}</button>}
-          <IconButton label={t.library.backup} onClick={() => setSettingsOpen(true)}>
-            <DatabaseIcon size={20} />
-          </IconButton>
           <button
             type="button"
             onClick={() => setCreating(true)}

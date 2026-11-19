@@ -51,9 +51,9 @@ export function Modal({ open, onClose, title, children }: Props) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={from}
             transition={{ type: "spring", stiffness: 420, damping: 38 }}
-            className="island safe-bottom relative w-full rounded-b-none md:mx-4 md:max-w-md md:rounded-[20px]"
+            className="island safe-bottom relative flex max-h-[88dvh] w-full flex-col overflow-hidden rounded-b-none md:mx-4 md:max-w-md md:rounded-[20px]"
           >
-            <div className="island-core p-4 md:p-5">
+            <div className="island-core min-h-0 flex-1 overscroll-contain overflow-y-auto p-4 md:p-5">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
                 <IconButton label={t.common.close} size="sm" onClick={onClose}>

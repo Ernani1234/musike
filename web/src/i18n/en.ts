@@ -97,7 +97,7 @@ export const en = {
   features: {
     takeover: "Take over playback", devices: "Devices", playbackDevices: "Playback devices", thisDevice: "This device", activeDevice: "Playing here", deviceOnline: "Online", deviceOffline: "Offline",
     playHere: "Play on this device", syncConnected: "Devices are synchronized", syncConnecting: "Connecting playback devices…", syncFailure: "Playback synchronization is unavailable. Reconnecting…",
-    transferWaiting: "Waiting for the previous device to pause. Keep it connected to finish the transfer.", phoneDevice: "Phone browser", browserDevice: "Computer browser",
+    transferWaiting: "Waiting for the previous device to pause. Keep it connected to finish the transfer.", transferPending: "Waiting for the previous device to pause. If it stays pending, use Take over playback.", phoneDevice: "Phone browser", browserDevice: "Computer browser",
     discord: "Discord presence", discordConnect: "Connect Discord", discordDisconnect: "Disconnect Discord", discordLinked: "Discord connected", discordPending: "Discord presence is waiting for the SDK service",
     authExpired: "Your sign-in or gateway session expired. Open Musike again to sign in.", edgeChallenge: "The gateway requires verification. Open Musike again.",
     networkTimeout: "The connection timed out. Try again.", networkFailure: "Could not reach Musike. Check your connection and try again.",

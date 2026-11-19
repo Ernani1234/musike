@@ -13,8 +13,18 @@ export async function accountRequest<T>(url: string, body?: unknown, method?: st
     await response.body?.cancel(); recordPlayback("account.error", { reason: failure, status: response.status });
     throw new Error(failure === "authentication" || failure === "edge_challenge" ? getT().features.authExpired : getT().features.unexpectedResponse);
   }
-  const data = await response.json();
+  let data: any;
+  try {
+    data = await response.json();
+  } catch {
+    await response.body?.cancel(); recordPlayback("account.error", { reason: "unexpected_response", status: response.status });
+    throw new Error(getT().features.unexpectedResponse);
+  }
   if (response.status === 401) window.dispatchEvent(new Event("musike:unauthorized"));
-  if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(data.error ?? `HTTP ${response.status}`) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
   return data as T;
 }

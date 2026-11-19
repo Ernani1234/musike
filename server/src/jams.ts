@@ -121,7 +121,7 @@ export class Jams {
       if (!row.host_id) throw fail(409, "Claim hosting before controlling the jam");
       if (input.version !== row.version) throw fail(409, "Jam changed; retry your action");
       const command = cleanCommand(input.action, input.args); const { action, args } = command;
-      if (row.host_id !== user && !row.guest_controls && !["addToQueue", "playNext"].includes(action)) throw fail(403, "Only the host controls playback");
+      if (row.host_id !== user && !row.guest_controls && !["addToQueue", "playNext", "next", "prev"].includes(action)) throw fail(403, "Only the host controls playback");
       const s = cleanSnapshot(JSON.parse(row.json)); s.position = this.position(s, row.updated_at);
       const reset = () => { s.position = 0; s.duration = s.queue[s.index]?.duration ?? 0; s.status = s.queue.length ? "playing" : "paused"; };
       if (action === "addToQueue") s.queue.push(args[0] as any);

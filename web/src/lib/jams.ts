@@ -17,8 +17,20 @@ function receive(view: JamView | null, transit = 0) {
     const stamp = generation;
     commands = commands.then(async () => {
       const current = useJam.getState().view; if (!current || generation !== stamp) return;
-      try { const next = await accountRequest<JamView>(`/api/jams/${current.id}/commands`, { action, args, version: current.version }); if (generation === stamp) receive(next); }
-      catch (e) { useJam.setState({ error: (e as Error).message }); toast((e as Error).message, "error"); }
+      try {
+        const next = await accountRequest<JamView>(`/api/jams/${current.id}/commands`, { action, args, version: current.version });
+        if (generation === stamp) receive(next);
+      } catch (e) {
+        // A version conflict means this command raced a concurrent update. Refresh
+        // the view once and replay the command against the new version instead of
+        // making the user tap again.
+        if ((e as Error & { status?: number }).status === 409) {
+          try { const fresh = await accountRequest<JamView | null>("/api/jams"); if (fresh && generation === stamp) { receive(fresh); const now = useJam.getState().view!;
+            const retried = await accountRequest<JamView>(`/api/jams/${now.id}/commands`, { action, args, version: now.version });
+            if (generation === stamp) receive(retried); return; } } catch {}
+        }
+        useJam.setState({ error: (e as Error).message }); toast((e as Error).message, "error");
+      }
     });
   });
   const state = view.snapshot;
@@ -33,8 +45,17 @@ export async function jamAction(path: string, body?: unknown, method?: string) {
 }
 export async function playJamHere() {
   await claimPlayback();
-  const view = useJam.getState().view; const devices = usePlaybackDevices.getState().view;
-  if (!view || devices?.active !== devices?.deviceId) return;
+  const view = useJam.getState().view; if (!view) return;
+  // The output grant is not immediate: the active device must pause and acknowledge
+  // the transfer first. Waiting here lets the grant land before this device binds
+  // the jam — reading the view synchronously right after claim always saw the
+  // transfer still pending and skipped the binding, freezing the jam.
+  let devices = usePlaybackDevices.getState().view;
+  for (let i = 0; i < 40 && devices && devices.active !== devices.deviceId; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    devices = usePlaybackDevices.getState().view;
+  }
+  if (!devices || devices.active !== devices.deviceId) { toast(getT().features.transferPending, "error"); return; }
   await accountRequest(`/api/jams/${view.id}/output`, {});
 }
 /** Polls are bounded to one in flight. Foreground reconciliation does not depend on a background timer surviving. */

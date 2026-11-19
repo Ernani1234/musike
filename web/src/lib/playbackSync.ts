@@ -87,7 +87,13 @@ export function startPlaybackSync(store: Store) {
   };
   async function publishNow(ack?: string, pausedForTransfer = false) {
     if (!view || !allowed || stopped) return;
-    const epoch = view.epoch; const current = snapshot();
+    const epoch = view.epoch;
+    const current = snapshot();
+    // The transfer grant requires the old device's state to read paused/idle, but
+    // suspendOutput only flips the store status via an async audio event — an
+    // immediate ack would snapshot "playing" and the grant would be refused until
+    // some later retry (or never). The pause is already requested, so report it.
+    if (pausedForTransfer) current.status = "paused";
     const result = await post({ type: "snapshot", epoch, seq: ++seq, snapshot: current, ack, pausedForTransfer });
     sentAt = Date.now(); receive(result);
   }
@@ -153,7 +159,12 @@ export function startPlaybackSync(store: Store) {
           const { done, value } = await reader.read(); if (done) break; lastPacketAt = Date.now(); pending += decoder.decode(value, { stream: true });
           if (pending.length > 2 * 1024 * 1024) throw new Error(getT().features.syncFailure);
           let end: number;
-          while ((end = pending.indexOf("\n\n")) >= 0) { const part = pending.slice(0, end); pending = pending.slice(end + 2); if (part.startsWith("data: ")) receive(JSON.parse(part.slice(6))); }
+          while ((end = pending.indexOf("\n\n")) >= 0) {
+            const part = pending.slice(0, end); pending = pending.slice(end + 2);
+            if (!part.startsWith("data: ")) continue;
+            // A single malformed frame must not tear down the whole sync connection.
+            try { receive(JSON.parse(part.slice(6))); } catch {}
+          }
         }
       } finally { await reader.cancel().catch(() => {}); }
     } catch (error) { if (!stopped) fail(error); }

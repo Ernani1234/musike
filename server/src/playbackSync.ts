@@ -121,6 +121,11 @@ export class PlaybackSync {
       if (++device.count > 120) throw fail(429, "Playback command rate limit reached");
       if (input.type === "ping") return this.view(room, id);
       if (input.type === "claim") {
+        // A pending transfer whose old device never acknowledged blocks claims and
+        // commands with 409s forever (retries used to reset its clock). Expire it so
+        // a fresh claim can start over instead of surfacing "Take over" for a
+        // handshake that already failed.
+        if (room.transfer && this.now() - room.transferAt > 10000) { room.transfer = null; }
         if (room.active && room.active !== id && !this.live(room.devices.get(room.active))) {
           if (input.takeover !== true) throw fail(409, "Previous output is unreachable. Use Take over playback.");
           room.active = id; room.snapshot = { ...room.snapshot, status: "paused" }; room.epoch++; room.seq = 0; room.commands = []; room.transfer = null;
@@ -129,7 +134,9 @@ export class PlaybackSync {
         }
         if (room.transfer && room.transfer !== id) throw fail(409, "Another playback transfer is pending");
         if (room.active && room.active !== id) {
-          room.transfer = id; room.transferAt = this.now(); // The old device must actually pause and acknowledge before a grant.
+          // Re-claiming an already-pending transfer must NOT reset its clock, or the
+          // expiry above can never fire while the old device ignores the handshake.
+          if (room.transfer !== id) { room.transfer = id; room.transferAt = this.now(); } // The old device must actually pause and acknowledge before a grant.
         } else if (!room.active) {
           room.active = id; room.epoch++; room.seq = 0;
           if (room.snapshot.queue.length) room.commands.push({ id: randomUUID(), action: "resume", args: [], at: this.now() });
