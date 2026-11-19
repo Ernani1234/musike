@@ -15,6 +15,12 @@ below includes reproduction steps and captured evidence.
 | BUG-004 | Radio sometimes stalls advancing to next song or errors server unreachable | MITIGATED + INSTRUMENTED; incident verification pending | 2026-11-18 |
 | BUG-005 | yt-dlp wrapper needs whole-file fix beyond BUG-001 mitigation | RESOLVED in wrapper source; deployment check pending | 2026-11-18 |
 | BUG-006 | Cloudflare Tunnel Optimization Findings for Codex Evaluation | Browser mitigation implemented; edge/device cause unverified | 2026-11-19 |
+| BUG-007 | Locked-screen track transition fails: preload handoff fired, media fetches timed out while hidden (first on-device trace) | OPEN; incident reproduced with instrumentation; delegated to Codex | 2026-11-19 |
+| BUG-008 | Remove desktop/ and mobile/ folders completely (Codex evaluates, Hermes executes) | OPEN; removal instructions delegated to Codex | 2026-11-19 |
+| BUG-009 | Discord Rich Presence for playing state (desktop target being removed) | OPEN; design delegated to Codex | 2026-11-19 |
+| BUG-010 | Logging overhaul: stdout/docker-logs only, no in-app log files; Hermes self-diagnosis | OPEN; redesign delegated to Codex | 2026-11-19 |
+| BUG-011 | Phone number normalization (E.164, +60 default, idempotent backfill) | OPEN; delegated to Codex | 2026-11-19 |
+| BUG-012 | Codex deliverable: Cloudflare + tunnel optimization audit prompt for Hermes | OPEN; prompt authoring delegated to Codex | 2026-11-19 |
 ---
 
 > Current dispositions are in the index and the dated follow-up below. Original reports retain their historical wording/status as evidence. “Resolved in source” does not certify a live provider, tunnel or physical-device acceptance test.
@@ -284,3 +290,219 @@ Base: uploaded fork main `da3f88384651cdf8ee487054a50b0effb277cb45`. The user ap
 ### Validation
 
 See TEST-RESULTS.md for the exact full-suite/build results, BUGFIX-IMPACT.md for file/function scope and DOCUMENTATION-SYNC.md for concise changed contracts. Original reports, operator settings and unresolved external acceptance evidence are preserved.
+
+---
+
+## BUG-007 — Locked-screen track transition still fails: first on-device diagnostics captured (preload handoff fired, media fetches timed out while hidden)
+
+**Status:** OPEN — incident from BUG-006 now reproduced WITH instrumentation on the real device; fix delegated to Codex
+**Severity:** High — continuous listening on a locked phone breaks at every track boundary that needs a fresh media fetch
+**Found:** 2026-11-19 by the Hermes agent, from the exported client diagnostics `musike-playback-diagnostics.json` (trace `d28b418d-5564-4c33-b720-8f409d014316`), investigating "when the phone is locked when playing next song got this error"
+**Surface:** web client playback pipeline → Musike media proxy → Cloudflare Tunnel/edge; interacts with BUG-001 (URL age) and BUG-003 (look-ahead)
+**Scope observed:** prod (music.machan.live), trace window 2026-11-19 05:01:09–05:04:19 UTC (13:01–13:04 MYT), page hidden 05:01:20→05:04:19
+
+### Observed behaviour (from the trace, times UTC)
+
+- 05:01:16.758 `player.preload` `u_6z-Zr5rvE` — look-ahead prepared ~2.5 min before it was needed.
+- 05:01:16–05:03:49 track `fjjcBqHUClU` plays. At 05:01:20.825 `page.hidden`; while hidden, the app's ~30 s API heartbeats ALL return 200 (92–221 ms, rays `a5cca883…`, `a5cca93f…`, `a5cca9fa…`, `a5ccaab6…`, `a5ccab71…`) — the app/tunnel/edge path stays fully reachable while locked.
+- 05:03:49.320 `player.ended` (`fjjcBqHUClU`); 05:03:49.322 `player.preloaded_handoff` (`u_6z-Zr5rvE`) — the BUG-006 browser mitigation FIRED correctly.
+- Immediately at handoff, 3 media-path `http.start` (05:03:49.329/.368/.385): two end at `http.error` `reason:"timeout"` after **28.06 s / 28.06 s** → `prepare.error` ×2; a third ends `reason:"network"` at 28.4 s → `media.error` → `player.error reason:"media"` at 05:04:19.588.
+- `page.visible` / `page.resume` arrive at 05:04:19.230 — recovery/visibility logic only ran after unlock; no media retry succeeded while hidden.
+
+### What it is NOT (checked, not assumed)
+
+- **Not a network loss:** API heartbeats kept returning 200 every ~30 s through the entire hidden window, seconds away from the failing fetches.
+- **Not a missed preload:** preload ran 153 s before handoff and `preloaded_handoff` executed at the transition.
+- **Not the radio path:** this was the manual queue path (`player.load` → `player.playing`).
+- **Not yet attributable to the edge:** the timed-out requests recorded NO `edgeRay` — whether they ever reached Cloudflare/origin is unknown from client data alone.
+
+### What Hermes could not check
+
+- Server-side and tunnel/Access/WAF logs for those three requests (they carry no Ray ID in the export; correlation needs the BUG-010 logging overhaul).
+- Android/phone-side network state (doze mode, background data restriction) during the hidden window.
+- Whether the preloaded media URL was still valid at handoff (~153 s old; cf. BUG-001's expiry behaviour) vs. the fetch stalling mid-transfer.
+
+### Root cause (hypothesis for Codex to verify, evidence above)
+
+While the page is hidden, the media/stream fetch path stalls (no bytes, no status) until the ~28 s client timeout aborts it, while small API requests keep succeeding. The BUG-006 mitigation chain (preload + handoff) executes but does not prevent the failure because the handoff still issues fresh media fetches at transition time. Recovery is visibility-gated, so the queue stays broken until unlock.
+
+### Suggested fixes (Azan decision 2026-11-19: delegated to Codex)
+
+- Correlate the failing fetches with origin/tunnel logs (needs BUG-010) to split "request never left the edge" from "origin stalled".
+- Add a hidden-state retry ladder for media fetches failed with timeout/network (bounded, position-preserving), independent of visibility resumption.
+- At `preloaded_handoff`, check URL age and re-resolve (fresh yt-dlp extraction) before serving, closing the BUG-001 interplay.
+- Rejected alternative: blanket WAF/keep-alive workarounds (already explicitly ruled out in BUG-006).
+
+### Operational impact
+
+- Any transition that needs a fresh media fetch while the phone is locked kills playback until the screen is unlocked; preloaded/cached transitions survive.
+
+### For the next ChatGPT revision
+
+- [ ] Verify against origin/tunnel logs whether the timed-out media requests reached origin.
+- [ ] Hidden-state bounded retry for media fetches (timeout/network reasons), preserving queue intent per BUG-006 rules.
+- [ ] Freshness check + re-resolve of preloaded stream URLs at handoff.
+- [ ] Acceptance: a locked-screen transition completes audibly with no unlock needed, evidenced by a new diagnostics export showing `player.playing` for the next track while `visibility:"hidden"`.
+
+### Change log
+
+| Date | Actor | Change |
+|------|-------|--------|
+| 2026-11-19 | Hermes agent | Report created (OPEN) with first on-device trace evidence; BUG-006's unverified incident now reproduced with instrumentation. Fix delegated to Codex. |
+
+## BUG-008 — Remove the `desktop/` and `mobile/` folders completely (Codex to evaluate, Hermes to execute)
+
+**Status:** OPEN — Codex instructed to EVALUATE and produce safe-removal instructions; a prior Codex revision was told to merely ignore these folders and left them in place
+**Severity:** Low (repo hygiene) — 168 tracked files of dead weight (desktop/ 16, mobile/ 152) that every revision has to carry and reason around
+**Found:** 2026-11-19 by the Hermes agent at Azan's instruction ("no to just ignore desktop and mobile folder but to remove it completely")
+**Surface:** repo tree `desktop/` (build, package.json, scripts, src, tsconfig.json), `mobile/` (android, ios, capacitor.config.ts, package.json, scripts, streaming.json); interactions unknown until evaluated
+**Scope observed:** `Azan-Shah/musike` @ main, 381 tracked paths, 2026-11-19
+
+### Observed behaviour
+
+- Both folders are tracked at main and are not part of the deployed product (prod runs the web + server containers on PCM).
+
+### Root cause (verified at tree level)
+
+- `mobile/` is a Capacitor wrapper (152 files incl. android/ios scaffolding); `desktop/` a packaged desktop target. Neither is in the deployment path, but removal was deferred rather than done.
+
+### What it is NOT (checked, not assumed)
+
+- Not verified harmless yet: shared code imports, workspace wiring and CI references have NOT been swept — that evaluation is exactly the delegated work.
+
+### Suggested approach (Azan decision 2026-11-19: remove completely, via evaluation-first)
+
+Codex must EVALUATE and then write step-by-step removal instructions for HERMES to execute (Codex does not assume host access):
+
+### For the next ChatGPT revision
+
+- [ ] Sweep references: `pnpm-workspace.yaml` package globs, root `package.json` scripts/workspaces, `pnpm-lock.yaml` entries, `.github/` workflows, `docs/`, `deploy/`, and any `web/`/`server/` import of code under those folders.
+- [ ] Produce a removal instruction document for Hermes: exact paths to delete, config files to edit, lockfile/workspace regen command, and the test suite to run afterwards.
+- [ ] Hermes executes the instructions on a clean clone; nothing else changes in the same commit.
+- [ ] Acceptance: `desktop/` and `mobile/` gone from the tree, lockfile/workspace consistent, full test suite green, zero dangling references (grep sweep clean).
+
+### Change log
+
+| Date | Actor | Change |
+|------|-------|--------|
+| 2026-11-19 | Hermes agent | Report created (OPEN). Removal delegated: Codex evaluates + writes Hermes instructions; Hermes executes. |
+
+## BUG-009 — Discord Rich Presence (feature request routed through the bug doc)
+
+**Status:** OPEN — design delegated to Codex
+**Severity:** Enhancement — show what is playing as the user's Discord status
+**Found:** 2026-11-19 by Azan ("add on discord rich presence")
+**Surface:** playback state (web client / server queue) → Discord RPC
+
+### Observed behaviour / desired
+
+- Discord should display the currently playing track/artist and playing state.
+
+### What it is NOT (checked, not assumed)
+
+- Not spec'd yet where the RPC client should run. Note the constraint: the desktop app is being REMOVED (BUG-008), so a desktop-app RPC host is off the table; the realistic options are a small server-side/companion process on the host, or a browser-integration approach.
+
+### Suggested fixes (Azan decision 2026-11-19: delegated to Codex)
+
+- Codex to propose the design: RPC host location, auth/scope, track/artist/album artwork fields, idle/pause state mapping, and graceful degradation when Discord is absent.
+
+### For the next ChatGPT revision
+
+- [ ] Design + implement Rich Presence for the playing state, respecting the BUG-008 removal of the desktop target.
+- [ ] Acceptance: playing a track updates the Discord status with title/artist; pause/close clears it without errors in the Musike logs.
+
+### Change log
+
+| Date | Actor | Change |
+|------|-------|--------|
+| 2026-11-19 | Hermes agent | Report created (OPEN). Design delegated to Codex. |
+
+## BUG-010 — Logging overhaul: application must log strictly to stdout (docker logs), no in-app log files; target: Hermes self-diagnosis
+
+**Status:** OPEN — redesign delegated to Codex
+**Severity:** Medium (operability) — diagnosing production incidents currently requires files/app-internal state instead of one `docker logs` stream
+**Found:** 2026-11-19 by Azan ("logging to be overhaul strictly by tail of docker instead of inside application e.g. allow hermes to read all logs and diagnose himself")
+**Surface:** server logging configuration → container stdout → `docker logs` on PCM0267
+
+### Observed behaviour / desired
+
+- All server-side logging must go to stdout/stderr ONLY, so `docker logs -f musike` (and `docker compose logs`) is the single, complete, chronological source of truth. No application-managed log files under `/data` or elsewhere.
+- Keep the trace/request IDs and stage timings introduced by BUG-004, now emitted to stdout with the same opt-in switch (`MUSIKE_PLAYBACK_DIAGNOSTICS=true`) for verbose stage detail; basic failures stay traceable by default.
+- Preserve the BUG-006 privacy posture: no raw headers, cookies, OTPs, tokens, provider URLs or error text in logs.
+
+### What it is NOT (checked, not assumed)
+
+- The browser-side diagnostics export (BUG-007's JSON) is a client artifact and stays as-is; this entry concerns server-side logging only.
+
+### Suggested fixes (Azan decision 2026-11-19: delegated to Codex)
+
+- Route every log write through the stdout logger; remove/supersede any file-logging path; document the `docker logs` diagnosis procedure so Hermes can read all logs and diagnose without app-internal access.
+
+### For the next ChatGPT revision
+
+- [ ] Eliminate in-app log files; verify the container writes nothing to disk for logging.
+- [ ] Ensure trace IDs from BUG-004 appear in stdout records for queue/media/radio/lifecycle events.
+- [ ] Acceptance: from the PCM host, `docker logs` alone reproduces a full request trace end-to-end, and no log files are created in the container.
+
+### Change log
+
+| Date | Actor | Change |
+|------|-------|--------|
+| 2026-11-19 | Hermes agent | Report created (OPEN). Redesign delegated to Codex. |
+
+## BUG-011 — Phone number normalization (requested change)
+
+**Status:** OPEN — delegated to Codex; exact module to be located during the revision
+**Severity:** Medium — inconsistent phone entry formats break matching/dedup of user identities
+**Found:** 2026-11-19 by Azan ("add in phone number normalization")
+**Surface:** user identity / phone-number fields in the server
+
+### Observed behaviour / desired
+
+- Phone numbers must be normalized to a single canonical form (E.164) at input and compared in that form everywhere: trim spaces/dashes/parentheses, handle leading zeros and a default country code (+60), and store/compare consistently so the same number entered in different formats is the same identity.
+
+### What it is NOT (checked, not assumed)
+
+- Hermes has not yet mapped the exact storage/comparison sites in source — Codex locates them in the revision (do not guess the file list).
+
+### Suggested fixes (Azan decision 2026-11-19: delegated to Codex)
+
+- Normalize on input and on comparison; add a one-off migration/backfill for existing stored values; add regressions for +60 formats, spaces, dashes, leading zeros and duplicates-after-normalization.
+
+### For the next ChatGPT revision
+
+- [ ] Locate all phone entry/storage/comparison sites and normalize to E.164 (+60 default).
+- [ ] Backfill/migrate existing rows idempotently.
+- [ ] Acceptance: the same number entered as `011-300 0675`, `+60113000675` and `60113000675` resolves to one identity; existing data survives the migration.
+
+### Change log
+
+| Date | Actor | Change |
+|------|-------|--------|
+| 2026-11-19 | Hermes agent | Report created (OPEN). Delegated to Codex. |
+
+## BUG-012 — Codex deliverable: author a Cloudflare/tunnel optimization prompt for Hermes
+
+**Status:** OPEN — delegated to Codex
+**Severity:** Enhancement (operability) — BUG-006 and BUG-007 show edge/tunnel behaviour is central to playback reliability, but settings were tuned ad hoc
+**Found:** 2026-11-19 by Azan ("maybe codex can also write a prompt for hermes to better improve the cloudflare setting for this application and also the tunnel")
+**Surface:** Cloudflare zone settings, WAF/Access rules, caching, and the Cloudflare Tunnel serving prod music.machan.live
+
+### Desired deliverable
+
+- Codex writes a PROMPT (instruction document) addressed to Hermes: how to audit and improve the Cloudflare configuration and the tunnel for Musike — e.g. WAF/Access interactions with media streaming, cache rules for static vs. authenticated media paths, timeouts/proxy settings relevant to the BUG-007 media stalls, tunnel resilience — with an explicit approval gate: Hermes proposes changes, Azan approves, Hermes applies and verifies.
+
+### What it is NOT (checked, not assumed)
+
+- No live Cloudflare change is requested by this entry itself; the deliverable is the prompt/checklist document committed to the repo.
+
+### For the next ChatGPT revision
+
+- [ ] Commit the prompt document (e.g. `docs/CF-TUNNEL-AUDIT-PROMPT.md`) with concrete audit steps, evidence to collect, and rollback notes.
+- [ ] Acceptance: Hermes can execute the prompt unaided and produce a findings + proposed-changes report for Azan's approval.
+
+### Change log
+
+| Date | Actor | Change |
+|------|-------|--------|
+| 2026-11-19 | Hermes agent | Report created (OPEN). Prompt authoring delegated to Codex. |
