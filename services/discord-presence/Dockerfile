@@ -9,7 +9,8 @@ COPY worker.cpp ./worker.cpp
 RUN g++ -std=c++20 -O2 -I./include worker.cpp -L. -ldiscord_partner_sdk -Wl,-rpath,'$ORIGIN' -o discord-worker
 
 FROM node:22-bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends libasound2 libpulse0 libx11-6 libatomic1 && rm -rf /var/lib/apt/lists/*
+# Runtime shared libraries required by libdiscord_partner_sdk.so (audio/X11 deps)
+RUN apt-get update && apt-get install -y --no-install-recommends libasound2 libpulse0 libx11-6 libatomic1 ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=sdk-build /build/discord-worker /build/libdiscord_partner_sdk.so ./
 COPY service.mjs ./service.mjs
