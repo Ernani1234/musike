@@ -15,7 +15,7 @@ below includes reproduction steps and captured evidence.
 | BUG-004 | Radio sometimes stalls advancing to next song or errors server unreachable | MITIGATED + INSTRUMENTED; incident verification pending | 2026-11-18 |
 | BUG-005 | yt-dlp wrapper needs whole-file fix beyond BUG-001 mitigation | RESOLVED — provisionally accepted by user; wrapper content retained | 2026-11-18 |
 | BUG-006 | Cloudflare Tunnel Optimization Findings for Codex Evaluation | Browser mitigation implemented; edge/device cause unverified | 2026-11-19 |
-| BUG-007 | Locked-screen track transition fails: preload handoff fired, media fetches timed out while hidden (first on-device trace) | Source repair tested; Samsung/tunnel acceptance pending | 2026-11-19 |
+| BUG-007 | Locked-screen track transition fails: preload handoff fired, media fetches timed out while hidden (first on-device trace) | STILL REPRODUCING on Samsung A07 per user (2026-11-19); fresh log supplied directly by Azan | 2026-11-19 |
 | BUG-008 | Remove desktop/ and mobile/ folders completely (Codex evaluates, Hermes executes) | Evaluation/runbook delivered; Hermes deletion pending | 2026-11-19 |
 | BUG-009 | Discord Rich Presence for playing state (desktop target being removed) | OAuth/service source delivered; vendor SDK/runtime acceptance pending | 2026-11-19 |
 | BUG-010 | Logging overhaul: stdout/docker-logs only, no in-app log files; Hermes self-diagnosis | RESOLVED in source — stdout diagnostics; audit/progress retained | 2026-11-19 |
@@ -23,6 +23,9 @@ below includes reproduction steps and captured evidence.
 | BUG-012 | Codex deliverable: Cloudflare + tunnel optimization audit prompt for Hermes | DELIVERED — audit prompt with approval/rollback gates | 2026-11-19 |
 | BUG-013 | Dead active output tab permanently deadlocks device sync — no device can play; dead tabs stay "online" | FIXED in source (d2a0eb4) — deployed to prod 2026-11-19; user acceptance pending | 2026-11-19 |
 | BUG-014 | Discord presence sidecar never connected: missing CA trust store (BoringSSL TLS failure to gaming-sdk.com) | FIXED in source (979a934) — deployed to prod 2026-11-19; user acceptance confirmed | 2026-11-19 |
+| BUG-015 | YouTube playlist import by link (feature — Codex to implement) | OPEN — delegated to Codex for implementation | 2026-11-19 |
+| BUG-016 | Social layer: friends, shared playlists, live jam rooms, presence/who's-listening (feature — Codex to implement) | OPEN — delegated to Codex for implementation | 2026-11-19 |
+| BUG-017 | Admin operations: live view of what online users play; permanent hard-delete of users; admin phone edit with new-number OTP (feature — Codex to implement) | OPEN — delegated to Codex for implementation | 2026-11-19 |
 ---
 
 > Current dispositions are in the index and the dated follow-up below. Original reports retain their historical wording/status as evidence. “Resolved in source” does not certify a live provider, tunnel or physical-device acceptance test.
@@ -346,11 +349,18 @@ While the page is hidden, the media/stream fetch path stalls (no bytes, no statu
 - [ ] Freshness check + re-resolve of preloaded stream URLs at handoff.
 - [ ] Acceptance: a locked-screen transition completes audibly with no unlock needed, evidenced by a new diagnostics export showing `player.playing` for the next track while `visibility:"hidden"`.
 
+### Status update — 2026-11-19 (user report; log handover)
+
+- Azan reports BUG-007 STILL persists on the Samsung A07 despite the tested source repair: locked-screen transitions still fail/stall, same symptom as the original trace.
+- **Log handover:** Azan will supply the recent downloaded on-device log HIMSELF, directly to Codex. Do not re-request, re-derive or reconstruct the client diagnostics export — wait for the file from Azan and correlate every hypothesis against it before writing code.
+- Implementation remains delegated to Codex (see "For the next ChatGPT revision" above).
+
 ### Change log
 
 | Date | Actor | Change |
 |------|-------|--------|
 | 2026-11-19 | Hermes agent | Report created (OPEN) with first on-device trace evidence; BUG-006's unverified incident now reproduced with instrumentation. Fix delegated to Codex. |
+| 2026-11-19 | Hermes agent | Azan: still reproducing on Samsung A07 (same symptom); fresh log to be supplied DIRECTLY by Azan to Codex. Index status updated. |
 
 ## BUG-008 — Remove the `desktop/` and `mobile/` folders completely (Codex to evaluate, Hermes to execute)
 
@@ -605,3 +615,123 @@ REVIEW REQUESTED — focus points:
 - `services/discord-presence/Dockerfile`: ca-certificates added to BOTH stages (builder + runtime); any risk the apt layer bloats or that stage 1 lacked it matters? (Stage 1 also patched — confirm both are needed/consistent.)
 - worker.cpp emits `discord.sdk.logdir` `{ok}` and full status events with error names — confirm no token/secret or PII can leak into these log lines (applicationId and status codes only).
 - The two SDK log quirks (dir+filename concatenation, flush-on-failure) make future diagnosis non-obvious — consider a comment or doc note in worker.cpp.
+
+
+## BUG-015 — YouTube playlist import by link (feature request — Codex to implement)
+
+**Status:** OPEN — feature recorded and implementation DELEGATED TO CODEX by Azan (2026-11-19); nothing implemented yet
+**Severity:** Enhancement (import) — one-link import of a whole YouTube playlist
+**Found:** 2026-11-19 by the Hermes agent at Azan's instruction ("allow to import youtube playlist by link")
+**Surface:** web import UI → server import pipeline / yt-dlp wrapper (BUG-005 context); interacts with BUG-002 (Takeout import engine, live per-item progress) and BUG-001 (URL expiry)
+**Scope observed:** repo `Azan-Shah/musike` @ `main`, 2026-11-19
+
+### Observed behaviour
+- No import path accepts a YouTube playlist URL today; the only bulk import is Google Takeout archives (BUG-002).
+
+### What it is NOT (checked, not assumed)
+- Not a duplicate of BUG-002: Takeout imports an offline archive, this is live `list=` links resolved on demand.
+- Not the same surface as the single-track yt-dlp path: playlists need batch resolution, ordering and partial-failure handling.
+
+### Root cause (verified by reading source + routing probes)
+- Feature gap, not a defect. The fixed yt-dlp wrapper (BUG-005) is the natural resolution engine; the BUG-002 live-progress UI contract is the pattern to reuse.
+
+### Suggested fixes (Azan decision 2026-11-19: delegated to Codex — implement NOW)
+- Accept YouTube playlist URLs (`playlist?list=…`, `watch?v=…&list=…`, `music.youtube.com` variants) in the import UI and server API.
+- Resolve the batch through the existing yt-dlp wrapper with per-item live progress (reuse BUG-002's engine/UI contract); ordered, resumable on failure.
+- Skip-and-report private/unavailable/unembeddable items; never fail the whole batch on one item.
+- Respect the existing library dedup so re-importing the same link does not duplicate tracks.
+- Rejected alternative: none offered — direct feature request.
+
+### Operational impact
+- Curating library content currently needs manual per-track adds or Takeout archives; link import removes the biggest onboarding gap for existing YouTube users.
+
+### For the next ChatGPT revision (Codex)
+- [ ] Server endpoint + UI accepting a playlist link, resolving via the yt-dlp wrapper with live per-item progress.
+- [ ] Partial-failure reporting and idempotent re-import.
+- [ ] Acceptance: importing a 50-video public playlist by link yields all playable tracks in order, with per-item progress visible, and a re-import of the same link creates no duplicates.
+
+### Change log
+
+| Date | Actor | Change |
+|------|-------|--------|
+| 2026-11-19 | Hermes agent | Report created (OPEN). Implementation delegated to Codex. |
+
+## BUG-016 — Social layer: friends, persistent shared playlists, live jam rooms, presence (feature request — Codex to implement)
+
+**Status:** OPEN — feature recorded and implementation DELEGATED TO CODEX by Azan (2026-11-19); nothing implemented yet
+**Severity:** Enhancement (social) — full friends/party system
+**Found:** 2026-11-19 by the Hermes agent at Azan's instruction ("somesort like party system of friends system? each user can sync song together eg jam together. share playlist with eachothers")
+**Surface:** new social module (server + web) → existing auth/users; extends the device-sync engine (`playbackSync`, BUG-013) from one owner's devices to cross-user rooms; presence intersects BUG-017's admin live view
+**Scope observed:** repo `Azan-Shah/musike` @ `main`, 2026-11-19
+
+### Observed behaviour
+- Multi-device sync exists within one account (BUG-009/BUG-013 engine). There is no cross-user social feature: no friends, no shared playlists, no listen-together rooms, no user presence beyond one's own devices.
+
+### What it is NOT (checked, not assumed)
+- Not a rework of device sync: the existing engine stays the owner-device layer; jam rooms are a new cross-user layer that may reuse its snapshot/epoch/ack design.
+- Not presence for admin: the "who is online and playing" admin view is BUG-017 and may consume the same presence data, but is scoped and authorized differently.
+
+### Root cause (verified by reading source + routing probes)
+- Feature gap. The needed primitives (auth'd users, SSE command/event streams, playback snapshots from the sync engine) all exist server-side.
+
+### Suggested fixes (Azan decision 2026-11-19: delegated to Codex — implement NOW)
+Azan chose the FULL social layer:
+- **Friends:** add/accept friend requests between accounts; friends can see each other's shared playlists.
+- **Persistent shared playlists:** any user can share a playlist with a friend or group; shared playlists are readable (and optionally editable per share-level) by recipients, survive logouts.
+- **Live jam rooms ("listen together"):** any user creates a room; guests join by invite link/code; everyone hears the same queue in sync; host controls playback (option to allow guests); queue additions from any member; room state mirrors the device-sync snapshot model with a designated output.
+- **Presence:** show friends who is online and what they are listening to (opt-out per user privacy setting).
+- Consent/privacy: sharing and presence are always opt-in per user; leaving a room must be graceful (learn from BUG-013's dead-output failure mode — a leaving host must hand over or pause, never deadlock the room).
+
+### Operational impact
+- Currently Musike is a strictly personal library/player; no shared listening between accounts at all.
+
+### For the next ChatGPT revision (Codex)
+- [ ] Friends + requests, shared playlists with permission levels, jam rooms with invite codes, presence with opt-out.
+- [ ] Room liveness must inherit BUG-013's reconcile lessons (dead host/output handover, no permanent 409 deadlock).
+- [ ] Acceptance: two accounts on separate devices — A shares a playlist to B (visible in B's library), A creates a room, B joins by code, both hear the same track in sync, B adds a queue item, A kills their tab and the room hands over or pauses instead of deadlocking.
+
+### Change log
+
+| Date | Actor | Change |
+|------|-------|--------|
+| 2026-11-19 | Hermes agent | Report created (OPEN). Implementation delegated to Codex. |
+
+## BUG-017 — Admin operations: live view of what online users are playing; permanent user deletion; admin phone-number edit with OTP (feature request — Codex to implement)
+
+**Status:** OPEN — feature recorded and implementation DELEGATED TO CODEX by Azan (2026-11-19); nothing implemented yet
+**Severity:** Enhancement (admin/operability)
+**Found:** 2026-11-19 by the Hermes agent at Azan's instruction ("allow admin to see also what online user is playing and also able to permanently delete user or edit their phone number")
+**Surface:** admin panel (exists; disposition per the 2026-11-19 follow-up above) → server users/admin routes; presence data shared with BUG-016; phone edit interacts with BUG-011 (canonical +60 identities) and the OTP system
+**Scope observed:** repo `Azan-Shah/musike` @ `main`, 2026-11-19
+
+### Observed behaviour
+- Admin cannot see what an online user is currently playing.
+- Admin cannot permanently delete a user account.
+- Admin cannot edit a user's phone number.
+
+### What it is NOT (checked, not assumed)
+- Not the same authorization surface as BUG-016 presence: this is admin-only, shows regardless of the user's friend-visibility settings (admin is an operator role, not a "friend"); BUG-016 presence remains user-scoped and opt-in.
+
+### Root cause (verified by reading source + routing probes)
+- Feature gap in the admin surface; the sync engine already holds live playback snapshots per owner (BUG-009 follow-up) that an admin view can read.
+
+### Suggested fixes (Azan decision 2026-11-19: delegated to Codex — implement NOW)
+- **Live "who's playing what":** admin panel view of every online user with their current track/state (playing/paused/idle, device), driven by the existing playback snapshots/SSE.
+- **Permanent delete:** hard-delete the user and ALL owned data — account, library, history, playlists, devices/rooms, shares — inside one audited transaction; also purge owned jam rooms and shared-playlist links referencing them (BUG-016 interplay); never silently merge or reassign ownership (BUG-011 collision rule).
+- **Phone-number edit:** admin edits the number, but the NEW number must still complete OTP verification before the identity switches (Azan's explicit choice — do not give admins an OTP bypass); canonical +60 normalization (BUG-011) applies; old number's pending OTPs are invalidated on success.
+- All three actions audit-logged server-side (audit history retained by user decision, see BUG-010 disposition).
+
+### Operational impact
+- Operator cannot moderate accounts or troubleshoot "what is user X hearing right now" without DB access; orphaned/abandoned accounts cannot be removed.
+
+### For the next ChatGPT revision (Codex)
+- [ ] Admin live playback view (read-only) over existing snapshots.
+- [ ] Hard-delete with full data purge + audit trail; deletes owned rooms/shares cleanly.
+- [ ] Admin phone edit gated on OTP verification of the NEW number; +60 normalization; pending OTPs invalidated.
+- [ ] Acceptance: admin sees a live playing row for a test user; deleting that user removes every owned record with no orphaned shares/rooms; editing the test user's phone to an unverified new number does NOT switch identity until OTP succeeds.
+
+### Change log
+
+| Date | Actor | Change |
+|------|-------|--------|
+| 2026-11-19 | Hermes agent | Report created (OPEN). Implementation delegated to Codex. |
