@@ -1,3 +1,4 @@
+import { PlaybackPreload } from "../lib/playbackPreload";
 import { create } from "zustand";
 import { getT, useT } from "../i18n";
 import { api, capabilities, explainStreamError, saveFile, streamSource, systemMedia, type ApiError, type ErrorCode } from "../lib/api";
@@ -80,6 +81,9 @@ let preloaded: { id: string; trace: string } | null = null;
 let resumeWanted = false;
 let lastFailure: FailureKind | undefined;
 let recoveryCount = 0;
+let unlockRecoveryUsed = false;
+const completePreload = new PlaybackPreload();
+let activeBlob: string | null = null;
 let recoveryId = "";
 
 export const videoEl = document.createElement("video");
@@ -178,11 +182,14 @@ export const usePlayer = create<PlayerState>((set, get) => {
     const s = get();
     const track = s.queue[index];
     if (!track) return;
-    if (recoveryId !== track.id) { recoveryId = track.id; recoveryCount = 0; }
+    if (recoveryId !== track.id) { recoveryId = track.id; recoveryCount = 0; unlockRecoveryUsed = false; }
     resumeWanted = opts.autoplay !== false;
     const reusable = !opts.disablePreload && !s.preferVideo && preloaded?.id === track.id && spareAudio && spareAudio.readyState >= 2 && !spareAudio.error &&
       mediaFields(spareAudio).buffered >= Math.min(8, Math.max(1, track.duration || 8));
-    const trace = reusable ? preloaded!.trace : undefined;
+    const complete = !opts.disablePreload && !s.preferVideo ? completePreload.take(track.id) : null;
+    completePreload.retain();
+    if (preloaded?.id === track.id && !reusable && !complete) recordPlayback("player.preload_skipped", { videoId: track.id, reason: "insufficient_buffer", ...(spareAudio ? mediaFields(spareAudio) : {}) });
+    const trace = complete?.trace ?? (reusable ? preloaded!.trace : undefined);
     beginPlaybackTrace(trace); recordPlayback("player.load", { videoId: track.id });
 
     // Video mode on a song: find its music video first, then load whichever fits.
@@ -204,7 +211,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     }
 
     const kind = kindFor(track);
-    if (kind === "audio" && reusable && spareAudio) {
+    if (kind === "audio" && !complete && reusable && spareAudio) {
       audio.pause(); const previous = audio; audio = spareAudio; spareAudio = previous; preloaded = null;
       spareAudio.removeAttribute("src"); spareAudio.load(); recordPlayback("player.preloaded_handoff", { videoId: track.id, ...mediaFields(audio) });
     }
@@ -244,10 +251,16 @@ export const usePlayer = create<PlayerState>((set, get) => {
       const previous = audio; audio = spareAudio; spareAudio = previous; preloaded = null;
       load(index, { ...opts, disablePreload: true });
     };
-    if (reusable && kind === "audio") {
+    if (!complete && reusable && kind === "audio") {
       if (pendingSeek > 0) { media.currentTime = pendingSeek; pendingSeek = 0; }
       if (Number.isFinite(media.duration)) set({ duration: media.duration });
       if (autoplay) play(media, fallback);
+      setMetadata(track); return;
+    }
+    if (activeBlob) { URL.revokeObjectURL(activeBlob); activeBlob = null; }
+    if (complete && kind === "audio") {
+      activeBlob = complete.url; start(complete.url);
+      recordPlayback("player.complete_handoff", { videoId: track.id, traceId: complete.trace });
       setMetadata(track); return;
     }
     const source = streamSource(mediaIdFor(track, kind), kind, s.quality);
@@ -312,6 +325,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     if (radioJob && (radioJob.queue !== s.queue || !s.autoRadio || s.repeat !== "off")) { radioJob.controller.abort(); radioJob = null; }
     const current = s.queue[s.index];
     const upcoming = upcomingTracks(s.queue, s.index, 10, s.repeat);
+    completePreload.retain(!s.preferVideo && lookahead > 0 ? upcoming[0]?.id : undefined);
     if (preloaded && (preloaded.id !== upcoming[0]?.id || s.preferVideo || lookahead === 0)) {
       spareAudio?.removeAttribute("src"); spareAudio?.load(); preloaded = null;
     }
@@ -327,8 +341,10 @@ export const usePlayer = create<PlayerState>((set, get) => {
         if (preloaded?.id !== next.id) {
           const trace = crypto.randomUUID(); preloaded = { id: next.id, trace };
           const source = streamSource(next.id, "audio", s.quality, trace);
-          if (typeof source === "string") { spareAudio.src = source; spareAudio.load(); recordPlayback("player.preload", { videoId: next.id, traceId: trace }); }
+          if (typeof source === "string") { void completePreload.prepare(next.id, source, trace); spareAudio.src = source; spareAudio.load(); recordPlayback("player.preload", { videoId: next.id, traceId: trace }); }
         }
+        const readySource = streamSource(next.id, "audio", s.quality, preloaded?.trace);
+        if (typeof readySource === "string") void completePreload.prepare(next.id, readySource, preloaded?.trace ?? crypto.randomUUID());
         warmRetries = 0;
       } else if (lookahead > 0 && next && spareAudio && !s.preferVideo && warmRetries++ < 10 && !warmTimer) {
         warmTimer = setTimeout(() => { warmTimer = null; warmQueue(); }, 1500);
@@ -592,7 +608,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
     toggle: () => {
       const s = get();
       if (retryTimer || s.status === "loading" && resumeWanted) {
-        cancelRetry(); resumeWanted = false; token++; activeMedia()?.pause(); set({ status: "paused", statusText: null }); return;
+        completePreload.clear(); if (activeBlob) { URL.revokeObjectURL(activeBlob); activeBlob = null; }
+      cancelRetry(); resumeWanted = false; token++; activeMedia()?.pause(); set({ status: "paused", statusText: null }); return;
       }
       const track = s.queue[s.index];
       if (!track) return;
@@ -683,6 +700,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
 
     setAutoRadio: (autoRadio) => set({ autoRadio }),
     suspendOutput: () => {
+      completePreload.clear(); if (activeBlob) { URL.revokeObjectURL(activeBlob); activeBlob = null; }
       cancelRetry(); resumeWanted = false; token++; loaded = null; pendingSeek = 0; preloaded = null;
       radioJob?.controller.abort(); manualRadio?.abort();
       if (warmTimer) { clearTimeout(warmTimer); warmTimer = null; }
@@ -692,11 +710,12 @@ export const usePlayer = create<PlayerState>((set, get) => {
     },
     resumeOutput: (snapshot) => {
       set({ ...snapshot, status: "paused", statusText: null, buffered: 0 });
-      if (snapshot.queue.length) load(snapshot.index, { startAt: snapshot.position, disablePreload: true });
+      if (snapshot.queue.length) load(snapshot.index, { startAt: snapshot.position, disablePreload: true, autoplay: snapshot.status === "playing" || snapshot.status === "loading" });
     },
     warmUpcoming: () => { warmRetries = 0; if (warmTimer) { clearTimeout(warmTimer); warmTimer = null; } warmQueue(); },
     stopSession: () => {
       cancelRetry();
+      completePreload.clear(); if (activeBlob) { URL.revokeObjectURL(activeBlob); activeBlob = null; }
       radioJob?.controller.abort(); manualRadio?.abort(); if (warmTimer) clearTimeout(warmTimer); token++; loaded = null; resumeWanted = false; preloaded = null;
       for (const media of [audio, videoEl, ...(spareAudio ? [spareAudio] : [])]) { media.pause(); media.removeAttribute("src"); media.load(); }
       set({ queue: [], original: null, index: 0, status: "idle", statusText: null, position: 0, duration: 0, buffered: 0 });
@@ -744,8 +763,8 @@ addEventListener("pagehide", persist);
 function restorePlayback() {
   recordPlayback("page.resume"); void flushPlaybackEvents();
   const state = usePlayer.getState(); state.warmUpcoming();
-  if (resumeWanted && state.status === "error" && recoverableFailure(lastFailure) && recoveryCount < 2) {
-    recoveryCount++; usePlayer.getState().toggle();
+  if (resumeWanted && state.status === "error" && recoverableFailure(lastFailure) && !unlockRecoveryUsed && document.visibilityState !== "hidden") {
+    unlockRecoveryUsed = true; recoveryCount = 0; recordPlayback("player.unlock_recovery"); usePlayer.getState().toggle();
   }
 }
 document.addEventListener("visibilitychange", () => {

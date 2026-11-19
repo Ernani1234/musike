@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { desktop } from "../lib/desktop";
 import type { Track } from "../lib/types";
 
 export interface ToastAction {
@@ -81,7 +80,6 @@ export const useUi = create<UiState>((set, get) => ({
   setTheme: (theme) => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#0B0C0F" : "#E9EBEF");
-    desktop?.setTheme(theme);
     try {
       localStorage.setItem("musike:theme", theme);
     } catch {

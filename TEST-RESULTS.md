@@ -1,3 +1,30 @@
+# Current verification — expanded web/PWA revision, 19 November 2026
+
+Baseline upload: `79958c4d54b9173ce2d80182973c6dce80e208be`. Node v24.22.3; package commands use pnpm 10.14.0. Production Docker still targets Node 22; no actual container runtime was available here.
+
+| Check | Actual result |
+| --- | --- |
+| `pnpm test` | PASS — 121 tests, 0 failures, 0 skipped |
+| `pnpm typecheck` | PASS — server and web packages |
+| `pnpm build` | PASS — production web/PWA assets and service worker |
+| `pnpm --filter @musike/server bundle` | PASS — bundled server |
+| pnpm 10.14 lockfile-only generation | PASS — offline metadata reconstructed from already-installed integrity-pinned packages; 810 → 436 package entries; no new package versions or direct dependency upgrades |
+| Clean `pnpm install --frozen-lockfile --offline` | Resolution accepted the lockfile, but reinstall could not finish: the pnpm 10 store lacked the Geist 5.3.0 tarball. Earlier registry lookup returned HTTP 403 for an existing transitive package. Source checks used the existing cached exact-version dependencies; a clean install remains an operator check |
+| Retired-platform executable reference sweep | PASS — no remaining local imports, native scripts, Capacitor/Electron dependencies or Docker COPYs; intentional upstream remote streaming URL retained |
+| Patch/tree/hash verification | PASS — clean patch application, complete resulting tree/byte comparison and archive source hashes |
+| Headless browser visual inspection | NOT COMPLETED — installed Chromium exited during launch; no screenshot/UI acceptance claimed |
+| Docker image build/run | NOT RUN — Docker unavailable |
+| Official SDK C++ build and actual revised presence service | NOT RUN — private vendor headers/binaries are not supplied; the prior Hermes CA fix/user-confirmed presence remains documented |
+| Samsung/background, real jam timing, public playlist and tunnel/provider acceptance | PENDING — fixtures are not physical device or live provider evidence |
+
+Added/extended fixtures cover accepted friend requests and phone privacy; opt-in presence; owner-controlled groups; viewer/editor grants, optimistic conflict rejection, revocation and explicit copies; public import ordering/dedup/partial failures/checkpoints/cancellation; direct Malaysian admin phone edit and session/challenge revocation; guarded hard deletion and FK cleanup; backed-up/idempotent migration; complete preload body bounds and release; foreground recovery without overriding deliberate pause; false SSE liveness and explicit stale takeover; and actual browser coordinator modules across account/device/jam boundaries using synthetic media/transport.
+
+The jam removal authorization fixture rejects naming a nonmember and verifies that a rejected request cannot change room settings or affect the unrelated account. Existing legacy auth-off, media Range/cache, matching, OAuth, provider-redaction, wrapper and cancellation fixtures remain passing. The wrapper's uploaded executable permission was restored; its content did not change.
+
+---
+
+## Historical verification records (superseded by current results above)
+
 # Verification results — BUG-002–006 — 19 November 2026
 
 Base: uploaded fork main `da3f88384651cdf8ee487054a50b0effb277cb45`. The unchanged baseline passed **58 tests** before implementation. This patch adds **34 tests**; the final full suite passes **92 tests, 0 failed, 0 skipped/cancelled**. No live deployment/provider/device acceptance is implied.

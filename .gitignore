@@ -1,11 +1,8 @@
 # Dependencies and builds
 node_modules/
 dist/
-dist-native/
 dev-dist/
-desktop/dist/
 release/
-desktop/out/
 
 # Local data (library, HD video cache)
 server/data/

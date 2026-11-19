@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="desktop/build/icon.png" width="96" alt="Musike logo: three equalizer bars forming an M" />
+<img src="web/public/icon-192.png" width="96" alt="Musike logo: three equalizer bars forming an M" />
 
 # Musike
 
@@ -13,8 +13,6 @@ A personal music player for YouTube's catalog: any song or music video, as **aud
 Runs as a **Windows**, **macOS** and **Linux** app, as an **Android**, **Android TV** and **iPhone** app that needs no computer, in any **browser** (installable PWA) and in **Docker**.
 
 ![MIT license](https://img.shields.io/badge/license-MIT-c3ec52?style=flat-square&labelColor=121318)
-![Windows, macOS and Linux](https://img.shields.io/badge/desktop-Windows%20%7C%20macOS%20%7C%20Linux-c3ec52?style=flat-square&labelColor=121318)
-![Android and iOS](https://img.shields.io/badge/mobile-Android%20%7C%20iOS-c3ec52?style=flat-square&labelColor=121318)
 ![Web and PWA](https://img.shields.io/badge/web-PWA-c3ec52?style=flat-square&labelColor=121318)
 ![Docker](https://img.shields.io/badge/docker-amd64%20%7C%20arm64-c3ec52?style=flat-square&labelColor=121318)
 ![TypeScript](https://img.shields.io/badge/TypeScript-100%25-c3ec52?style=flat-square&labelColor=121318)
@@ -48,10 +46,10 @@ Runs as a **Windows**, **macOS** and **Linux** app, as an **Android**, **Android
 
 Musike started from the idea behind the old Discord music bots: a server that fetches audio straight from YouTube and hands it over ready to play. Instead of a chat, the interface is a full music player: fast, simple, and built to feel like a modern app.
 
-- **No ads, no account:** the server gets the original stream with [yt-dlp](https://github.com/yt-dlp/yt-dlp) and passes the bytes to the player.
+- **Server-mediated playback:** the server gets the original stream with [yt-dlp](https://github.com/yt-dlp/yt-dlp) and passes the bytes to the player.
 - **Song or music video:** switch between Audio and Video at any time, from the same point in the track. For songs, Musike finds the artist's official music video.
 - **Any screen:** designed for phones of every size, tablets, laptops and big monitors.
-- **Yours:** it runs on your own computer. Playlists and favorites live in a local file you can export and take to any other Musike.
+- **Yours:** it runs on your own computer. Private account libraries live in SQLite; auth-off libraries use JSON. Both support portable library backups.
 
 ## Features
 
@@ -83,19 +81,12 @@ Musike started from the idea behind the old Discord music bots: a server that fe
 - Show or hide panels: the Now Playing panel, playlists in the sidebar, a compact icons-only sidebar, the album column, the background texture, and each section of the Home page
 - Responsive from 320 px phones to ultrawide monitors; lock screen, headphone and media key controls (Media Session); picks up the queue where you left off
 
-**Desktop app (Windows, macOS and Linux)**
-- Native window with its own title bar, no browser
-- Windows installer with desktop and Start menu shortcuts; macOS app for Apple Silicon and Intel; Linux `.deb` and AppImage for x64 and arm64
-- Updating keeps your library (it's backed up automatically before each update)
-- Downloads and maintains the tools it needs (yt-dlp, Deno, FFmpeg)
-
-**Android and iPhone apps**
-- **Standalone:** no computer, no server. The phone searches YouTube Music and plays the audio straight from YouTube
-- Same app as on the computer: search, genres, artists, albums, Search a list, playlists, favorites, themes and colors
-- Keeps playing with the screen off, with controls in the notification, on the lock screen and on headphones; pauses for calls and when headphones are unplugged
-- **iPhone:** the same app for iOS, installed with AltStore, SideStore or Sideloadly
-- **Android TV:** the same app appears in the TV launcher and switches to a bigger interface you navigate with the remote
-- Audio only for now (no video mode)
+**Web and PWA**
+- Browser and installable PWA on phones, tablets, computers and browser TVs.
+- Authenticated accounts synchronize playback across devices with one output per account.
+- Friends, owner-controlled groups, live shared playlists and opt-in listening presence.
+- Jam rooms share a queue and timeline across accounts; host loss pauses playback until a member claims hosting.
+- Public YouTube playlist links import with item progress, resumable checkpoints and duplicate prevention.
 
 **Self-hosting**
 - **Docker image** for amd64 and arm64 (Raspberry Pi), with everything inside
@@ -124,121 +115,15 @@ Musike started from the idea behind the old Discord music bots: a server that fe
 
 ## How it works
 
-```mermaid
-flowchart LR
-  subgraph Clients
-    W["Web / PWA<br/>React + Vite"]
-    D["Desktop app<br/>Electron"]
-  end
-  subgraph S["Musike server (Fastify)"]
-    API["REST API"]
-    P["Stream proxy<br/>HTTP Range"]
-    L[("library.json")]
-  end
-  YTM["YouTube Music<br/>youtubei.js"]
-  T["yt-dlp + Deno + FFmpeg"]
-  YT[("YouTube / googlevideo")]
-
-  W --> API
-  D -- "built-in server" --> API
-  API -- "search, genres, artists, albums, radio" --> YTM
-  API -- "resolves streams, merges HD" --> T
-  T --> YT
-  P --> YT
-  API --> L
-```
-
-1. **Catalog:** the server queries YouTube Music with [youtubei.js](https://github.com/LuanRT/YouTube.js): search, suggestions, genres, artists, albums, radio and picking the official music video.
-2. **Playback:** yt-dlp resolves the stream URLs (AAC audio, MP4 video), running YouTube's player code with Deno. Those URLs are tied to the IP that resolved them, so the server **proxies** the bytes, forwarding the `Range` header so seeking is instant. Nothing is written to disk for audio.
-3. **HD video and videos without an SD version:** yt-dlp downloads and merges video + audio with FFmpeg, keeps it in a cache (least-recently-played first, 2 GB by default) and the server serves the file with Range support.
-4. **Library:** playlists, favorites and history live in `library.json`, written atomically.
-
-**On Android** there is no server. The app runs Musike's server code itself (catalog and library, from `server/src`) and asks YouTube for the audio stream from the phone, so the stream URL belongs to the phone's own connection and the player reads it directly, without a proxy. Which YouTube client the app uses to get streams is read from [`mobile/streaming.json`](mobile/streaming.json), so it can be adjusted without releasing a new app.
-5. **Web:** a single `<video>` element moves around the page (panel, full screen, mini player, cinema mode) without interrupting playback.
+1. The Fastify server queries YouTube Music through youtubei.js for discovery. yt-dlp and the existing direct fallback resolve media on the server.
+2. Audio/video stays behind the same-origin stream proxy. Complete cached audio and HD video support HTTP Range seeking; queue warming prepares upcoming audio.
+3. Authenticated users keep private libraries, sessions, imports, shares and jam metadata in SQLite through a dedicated worker. Auth-off installations retain the shared JSON library.
+4. React/Zustand drives the browser media elements. The service worker caches artwork, never protected API responses or media streams. A bounded next-track Blob preload can carry one complete audio body through a temporary network interruption.
+5. Per-account playback ownership and cross-account jam membership are separate. Device transfers normally require a pause acknowledgement; stale output requires explicit takeover. Host loss pauses a jam rather than choosing a host silently.
 
 ## Installation
 
-### Option 1: Windows app
-
-Download `Musike-Setup-<version>-Windows.exe` from the [latest release](https://github.com/Ernani1234/musike/releases/latest) and run it. The installer:
-
-- installs for the current user only (no administrator needed) and lets you pick the folder;
-- creates **Musike** shortcuts on the desktop and in the Start menu, and opens the app when it's done;
-- uninstalls from Windows Settings > Apps.
-
-On first launch, a screen shows the official tools being downloaded: **yt-dlp** and **Deno** (about 60 MB) and, in the background, **FFmpeg** (about 80 MB, for HD video). Everything lives in `%APPDATA%\Musike`:
-
-| Folder | Contents |
-|---|---|
-| `bin` | Musike's own yt-dlp, Deno and FFmpeg (updatable in Settings) |
-| `data` | `library.json` with playlists, favorites and history |
-| `cache` | HD videos already downloaded |
-| `backups` | copies of the library made at each update |
-
-**To update, just install the new version over the old one.** `%APPDATA%\Musike` is separate from the program folder, and neither updating nor uninstalling deletes it. To be safe, the installer also copies the library to `backups\library-before-install-<version>.json` before replacing the old version, and the app keeps another dated copy on the first launch of each version (the 5 most recent). To restore one, close Musike and copy it over `data\library.json`.
-
-> The installer isn't code-signed yet. On first run Windows shows "Windows protected your PC": click **More info**, then **Run anyway**.
-
-To build the installer yourself: `pnpm install && pnpm installer` (creates `release\Musike-Setup-<version>-Windows.exe`).
-
-### Option 2: macOS app
-
-Download the `.dmg` for your Mac from the [latest release](https://github.com/Ernani1234/musike/releases/latest): `Musike-Setup-<version>-macOS-arm64.dmg` for Apple Silicon (M1 and newer) or `Musike-Setup-<version>-macOS-x64.dmg` for Intel. Open it and drag **Musike** to **Applications**. Requires macOS 12 or newer.
-
-The app isn't notarized by Apple yet, so macOS blocks the first launch:
-
-1. Open Musike once; macOS says it can't verify it. Click **Done**.
-2. Open **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to Musike, then confirm.
-
-If macOS says the app "is damaged and can't be opened", remove the download flag in Terminal and open it again:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/Musike.app
-```
-
-Like on Windows, the first launch downloads yt-dlp, Deno and FFmpeg. Everything lives in `~/Library/Application Support/Musike` (same folders as the table above), and updating (dragging the new version over the old one) keeps your library.
-
-To build it yourself on a Mac: `pnpm install && pnpm --filter musike-desktop dist:mac` (creates the `.dmg` files in `release`).
-
-### Option 3: Linux app
-
-From the [latest release](https://github.com/Ernani1234/musike/releases/latest), pick the package for your system: `x64` for most PCs, `arm64` for ARM computers such as a Raspberry Pi 4 or 5 running a 64-bit desktop.
-
-- **Debian, Ubuntu, Linux Mint, Pop!_OS:** `Musike-Setup-<version>-Linux-x64.deb`. Open it with the software installer, or run `sudo apt install ./Musike-Setup-<version>-Linux-x64.deb`. Musike appears in the applications menu.
-- **Any other distribution:** `Musike-Setup-<version>-Linux-x64.AppImage`. Make it executable and run it: `chmod +x Musike-*.AppImage && ./Musike-*.AppImage`.
-
-> Ubuntu 24.04 and newer block the sandbox an AppImage needs, so there the AppImage closes right away: use the `.deb` (it sets up what's needed), or start the AppImage with `--no-sandbox`.
-
-Like on Windows and macOS, the first launch downloads yt-dlp, Deno and FFmpeg. Everything lives in `~/.config/Musike` (same folders as the table above). To update, install the new `.deb` over the old one or replace the AppImage: your library stays.
-
-To build it yourself on Linux: `pnpm install && pnpm --filter musike-desktop dist:linux` (creates the `.deb` and `.AppImage` files in `release`).
-
-### Option 4: Android app
-
-On the phone, download `Musike-Setup-<version>-Android.apk` from the [latest release](https://github.com/Ernani1234/musike/releases/latest) and open it. Android asks to allow installing apps from your browser (or Files): allow it, then tap **Install**. If Play Protect warns about an unknown app, tap **More details > Install anyway**. Requires Android 7.0 or newer.
-
-- It works on its own: no computer and no Musike server needed, only an internet connection.
-- Your playlists and favorites live on the phone. To move them to or from a computer, use [backup to a file](#moving-your-library-backup) (on Android, Export opens the share sheet: save to Files or Drive, or send it to yourself).
-- **To update,** install the new APK over the old one. Your library stays.
-- Audio only for now: the video mode is available on the desktop app and in the browser.
-- **Android TV:** install the same APK on the TV (for example with a file manager app, or `adb install`). Musike shows up in the TV launcher and switches to a remote-friendly interface by itself.
-
-To build the APK yourself you need JDK 21 and the Android SDK (Android Studio installs both): `pnpm install && pnpm --filter @musike/mobile apk` (creates `release/Musike-Setup-<version>-Android.apk`; unsigned unless `mobile/android/keystore.properties` points to your signing key).
-
-### Option 5: iPhone app
-
-Download `Musike-Setup-<version>-iOS.ipa` from the [latest release](https://github.com/Ernani1234/musike/releases/latest). Apple only lets App Store apps install directly, so the file comes unsigned and is signed with your own Apple ID as you install it, using one of these free tools:
-
-- **AltStore** or **SideStore:** install the store on the iPhone, then open the `.ipa` with it.
-- **Sideloadly:** on a Windows or Mac computer, connect the iPhone and drag the `.ipa` into it. Then trust your Apple ID in **Settings > General > VPN & Device Management**.
-
-On iOS 16 and newer, also turn on **Settings > Privacy & Security > Developer Mode** the first time. With a free Apple ID the app has to be signed again every 7 days; AltStore and SideStore do it on their own in the background. Requires iOS 15 or newer.
-
-Like on Android, it works on its own (no computer or server), keeps playing with the screen locked, and has controls on the lock screen, in Control Center and on headphones. Audio only for now.
-
-To build it yourself on a Mac with Xcode: `pnpm install && pnpm --filter @musike/mobile ipa` (creates `release/Musike-Setup-<version>-iOS.ipa`).
-
-### Option 6: Docker
+### Docker
 
 For a home server, NAS or Raspberry Pi. The image (amd64 and arm64) includes yt-dlp, Deno and FFmpeg.
 
@@ -246,7 +131,7 @@ For a home server, NAS or Raspberry Pi. The image (amd64 and arm64) includes yt-
 # docker-compose.yml
 services:
   musike:
-    image: ghcr.io/ernani1234/musike:latest
+    image: musike:local
     ports:
       - "4180:4180"
     volumes:
@@ -259,18 +144,19 @@ volumes:
 ```
 
 ```bash
+docker build -t musike:local .
 docker compose up -d   # then open http://<that machine>:4180
 ```
 
-Or with plain Docker: `docker run -d -p 4180:4180 -v musike-data:/data -v musike-cache:/cache ghcr.io/ernani1234/musike`. To build the image from source instead: `docker build -t musike .`
+Or with plain Docker: `docker run -d -p 4180:4180 -v musike-data:/data -v musike-cache:/cache musike:local`. To build the image from source instead: `docker build -t musike .`
 
-- A new image is published for every release; `docker compose pull && docker compose up -d` updates it. The library stays in the `/data` volume.
+- Build this fork through your existing image pipeline. Recreating the container retains the `/data` and `/cache` volumes. Back up data and the instance secret before migrations.
 - yt-dlp can also be updated from **Settings** without a new image (until the container is recreated).
 - All the [environment variables](#configuration) work, e.g. `YTDLP_EXTRA_ARGS="--cookies /data/cookies.txt"` for YouTube's bot checks.
 
 > **Run it at home, not on a VPS:** YouTube blocks datacenter IPs ("Sign in to confirm you're not a bot"). A home server uses your residential IP.
 
-### Option 7: Node server + browser
+### Node server + browser
 
 Requirements:
 
@@ -294,15 +180,14 @@ The server prints its network addresses on start. Open the `Network:` address on
 
 ```bash
 pnpm dev        # server (4180) + Vite with hot reload (5173)
-pnpm desktop    # opens the Electron app in development mode
 pnpm typecheck  # checks every package
 ```
 
 ## Moving your library (backup)
 
-Authenticated users now share their playback queue/state across web/PWA devices with one active output. Library export remains the portable backup/transfer mechanism between instances: web, desktop, Android, Docker or another computer. Native-target retirement is a separate Hermes operation; see `docs/PLATFORM-REMOVAL.md`.
+Authenticated users now share their playback queue/state across web/PWA devices with one active output. Library export remains the portable backup/transfer mechanism between instances: another browser, PWA or server instance. Native installers have been retired; see `docs/PLATFORM-REMOVAL.md`.
 
-1. On the source, open **Settings > Your data > Export** (or the database icon in the Library). A `musike-backup-YYYY-MM-DD.musike.json` file is saved (on Android, the share sheet opens so you can save or send it).
+1. On the source, open **Settings > Your data > Export** (or the database icon in the Library). A `musike-backup-YYYY-MM-DD.musike.json` file is saved.
 2. On the destination, **Settings > Your data > Import** and pick the file.
 3. Check the preview (how many playlists, tracks, favorites) and choose:
    - **Merge with my library** (default): adds what's missing and never deletes. Playlists with the same name get the new tracks; importing twice duplicates nothing.
@@ -359,7 +244,7 @@ Server environment variables (all optional):
 | `MUSIKE_DATA_DIR` | `server/data` (`/data` in Docker) | Shared JSON when auth off; account DB/secret when on |
 | `MUSIKE_CACHE_DIR` | `server/cache` (`/cache` in Docker) | Shared audio/HD cache and working files |
 | `MUSIKE_CACHE_MAX_MB` | `2048` | Video cache limit (least recently played go first) |
-| `MUSIKE_BIN_DIR` | | Private tools folder (the desktop app uses `%APPDATA%\Musike\bin`) |
+| `MUSIKE_BIN_DIR` | | Private tools folder for server-managed media tools |
 | `MUSIKE_LANG` | `en` | YouTube Music language when a request doesn't say (the app always sends the chosen language) |
 | `MUSIKE_LOCATION` | `BR` | Region for YouTube Music results |
 
@@ -395,36 +280,18 @@ Every route answers JSON. Errors look like `{ "error": "message", "code"?: "tool
 
 ## Project structure
 
-```
-musike/
-├─ server/            Fastify + yt-dlp + youtubei.js
-│  └─ src/
-│     ├─ app.ts         routes and startup (used by the CLI, the desktop app and Docker)
-│     ├─ browse.ts      genres, artists, albums
-│     ├─ search.ts      search, suggestions, radio and official music videos
-│     ├─ ytdlp.ts       stream resolution, HD cache, error messages
-│     ├─ stream.ts      proxy with HTTP Range
-│     ├─ library.ts     playlists, favorites, history and backup import
-│     ├─ i18n.ts        server messages in each language
-│     ├─ tools.ts       finds yt-dlp, Deno, FFmpeg (Windows registry, winget, PATH)
-│     ├─ bootstrap.ts   downloads the tools for the desktop app
-│     └─ system.ts      yt-dlp version and updates
-├─ web/               React 19 + Vite + Tailwind v4 + Motion + Phosphor (PWA)
-│  └─ src/
-│     ├─ player/        playback engine (audio, video, queue, Media Session)
-│     ├─ components/    player, panels, cinema mode, Settings, backup
-│     ├─ views/         Home, Search, Library, playlists, genres, artists, albums
-│     ├─ i18n/          English (the source) and Portuguese
-│     ├─ native/        Android: server code running in the app, streams, media controls
-│     ├─ tv/            Android TV: remote (D-pad) navigation and the 10-foot interface
-│     └─ stores/        state (zustand), appearance preferences
-├─ desktop/           Electron: window, built-in server, Windows installer, macOS and Linux packages
-├─ mobile/            Android and iOS apps (Capacitor): native playback, signing, streaming.json
-├─ Dockerfile         server + web app image (amd64, arm64)
-└─ docs/              UX benchmark, design system and screenshots
-```
+| Path | Responsibility |
+| --- | --- |
+| `server/src/` | Fastify APIs, authentication, worker database, media, imports, sharing and jams |
+| `server/test/` | Regression and integration fixtures |
+| `web/src/` | React views, reusable components, Zustand player, browser coordination and typed translations |
+| `web/public/` | PWA manifest assets and icons |
+| `services/discord-presence/` | Optional authenticated server-side Social SDK adapter |
+| `deploy/` | Existing operator deployment helpers, including the retained yt-dlp wrapper |
+| `docs/` | Design, operational verification and retirement notes |
+| `Dockerfile` | Server and web/PWA image |
 
-**Stack:** TypeScript everywhere · Fastify 5 · youtubei.js · yt-dlp · React 19 · Vite 8 · Tailwind CSS 4 · Motion · Zustand · React Router · Phosphor Icons · Geist · Electron 44 · electron-builder · Capacitor 8.
+**Stack:** TypeScript, Fastify, SQLite worker RPC, youtubei.js, yt-dlp, React, Vite, Tailwind, Zustand and React Router. The supported product is web/PWA only.
 
 **Design:** the identity (the equalizer M mark, the Volt color, Geist) and the layout rules are in [docs/design-system.md](docs/design-system.md). The UX study behind the layout is in [docs/ux-benchmark.md](docs/ux-benchmark.md).
 
@@ -448,7 +315,7 @@ YTDLP_EXTRA_ARGS="--cookies-from-browser firefox" pnpm start
 In Docker, export a `cookies.txt` into the data volume and set `YTDLP_EXTRA_ARGS="--cookies /data/cookies.txt"`.
 
 **"yt-dlp wasn't found"**
-In the desktop app, use **Install** in Settings. For the Node server, install it with `winget install yt-dlp.yt-dlp` or set `YTDLP_PATH`.
+Use **Install** in Settings when available, or install it on the server with `winget install yt-dlp.yt-dlp` or set `YTDLP_PATH`.
 
 **Video takes a while to start**
 Many videos have no combined SD version; the server downloads and merges video and audio before playing (a few seconds the first time, instant after that thanks to the cache).
@@ -459,21 +326,13 @@ Musike only accepts music videos from the artist's own channel, so it never play
 **iPhone**
 iOS limits background playback for PWAs; Audio mode works better than Video.
 
-## Roadmap
+## Supported account features
 
-- [x] Albums and artist discographies
-- [x] Docker image
-- [x] Languages and appearance settings
-- [x] macOS app
-- [x] Linux app
-- [x] Android app (audio)
-- [x] iPhone app (audio, sideloaded)
-- [ ] Cloud sync for the library (today: [backup to a file](#moving-your-library-backup))
-- [ ] Import YouTube playlists from a link
-- [ ] Video mode on Android
-- [ ] Automatic updates for the desktop app
+Enable authentication through the existing deployment settings; see [deployment notes](DEPLOYMENT-NOTES.md). Accounts use Malaysian WhatsApp OTP login, private libraries and guarded admin operations. Administrators may edit Malaysian phone numbers directly without OTP; this revokes the user's existing sessions. Permanent deletion requires typed confirmation and preserves sanitized audit evidence.
 
-Ideas and bug reports are welcome in [Issues](https://github.com/Ernani1234/musike/issues).
+In **Library**, choose **Import YouTube playlist**. Re-import appends missing playable tracks while retaining Musike edits. In **Social**, exchange friend codes, accept requests, create groups, grant viewer/editor playlist access, or join a jam. Saving a personal copy is explicit and survives later share revocation. Friend presence is off by default; administrator playback visibility is independent.
+
+Jam invitations last 30 minutes. Each account chooses one output device; members may add tracks, while transport controls belong to the host unless guest controls are enabled. An absent host causes a pause and explicit host claim. Foreground alignment targets approximately one second on a stable connection; browser suspension and autoplay restrictions require device acceptance.
 
 ## Legal notice
 
@@ -486,6 +345,6 @@ Musike is a project for **personal and educational use**. Playing YouTube conten
 
 ## 19 November production revision
 
-Authenticated web/PWA accounts now have synchronized playback state, remote controls and explicit pause-confirmed device transfer. Malaysian OTP entry normalizes to +60 and rejects foreign numbers; existing identity migration stops safely on conflicts. Structured container diagnostics support the post-handoff stall investigation. Optional authenticated Discord presence source requires operator-provided Social SDK access/binaries and real headless acceptance before activation.
+Authenticated web/PWA accounts now have synchronized playback state, remote controls and explicit pause-confirmed device transfer. Malaysian OTP entry normalizes to +60 and rejects foreign numbers; existing identity migration stops safely on conflicts. Structured container diagnostics support the post-handoff stall investigation. The optional authenticated Discord service requires operator-provided SDK binaries; Hermes previously deployed the CA fix and the user confirmed working presence. This package removes temporary SDK file logging and requires a deployment regression check.
 
 See [Hermes verification](docs/HERMES-VERIFICATION.md), [Discord service](services/discord-presence/README.md), [platform retirement](docs/PLATFORM-REMOVAL.md) and [Cloudflare audit prompt](docs/CF-TUNNEL-AUDIT-PROMPT.md). This is source delivery, not a production deployment or a claim of physical-device/vendor acceptance.

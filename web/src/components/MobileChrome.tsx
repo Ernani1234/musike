@@ -1,3 +1,5 @@
+import { useSession } from "../stores/session";
+import { UsersIcon } from "@phosphor-icons/react";
 import { BooksIcon, HouseIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { NavLink, useNavigate } from "react-router";
 import { cn } from "../lib/format";
@@ -8,20 +10,22 @@ import { Artwork } from "./Artwork";
 import { PlayPauseIcon } from "./Controls";
 
 const tabs = [
+  { to: paths.social, key: "social", Icon: UsersIcon, end: false },
   { to: paths.home, key: "home", Icon: HouseIcon, end: true },
   { to: paths.search, key: "search", Icon: MagnifyingGlassIcon, end: false },
   { to: paths.library, key: "library", Icon: BooksIcon, end: false },
 ] as const;
 
 export function TabBar() {
+  const signedIn = useSession(s => !!s.user);
   const t = useT();
   return (
     <nav
       aria-label={t.nav.main}
       className="safe-bottom fixed inset-x-0 bottom-0 z-20 border-t border-line bg-bg/85 backdrop-blur-xl"
     >
-      <ul className="mx-auto grid h-16 max-w-md grid-cols-3">
-        {tabs.map(({ to, key, Icon, end }) => (
+      <ul className={cn("mx-auto grid h-16 max-w-md", signedIn ? "grid-cols-4" : "grid-cols-3")}>
+        {tabs.filter(item => item.key !== "social" || signedIn).map(({ to, key, Icon, end }) => (
           <li key={to}>
             <NavLink
               to={to}

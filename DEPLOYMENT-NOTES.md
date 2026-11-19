@@ -1,3 +1,25 @@
+# Current delivery — web/PWA production revision, 19 November 2026
+
+This header supersedes historical overlay/native instructions below. The current package is a complete source tree based on upload `79958c4d54b9173ce2d80182973c6dce80e208be`; apply the supplied clean patch against that exact baseline, or use a clean source directory. ZIP extraction over an old tree does not remove retired platform files. Preserve operator environment/compose files and runtime volumes. Only the two retired manifest COPY instructions and their comment changed in the source Dockerfile. The wrapper content remains unchanged; its executable permission is restored from the upload.
+
+Use pnpm 10.14.0: `pnpm install --frozen-lockfile`, `pnpm test`, `pnpm typecheck`, `pnpm build`, `pnpm --filter @musike/server bundle`. Native/desktop packages and installer CI no longer exist. Build the actual Docker image through the operator pipeline; none was built/deployed here. TEST-RESULTS.md records dependency-install and browser environment limitations separately from successful source checks.
+
+Before auth-enabled startup back up persistent data plus the instance secret consistently. The new `social-import-admin-v1` worker migration snapshots existing nonempty data with mode 0600 and transactionally creates the documented import/social/jam tables and indexes. Restarted imports become interrupted/resumable; jams restart paused with hosting vacant. One application process remains required.
+
+New knob: `MUSIKE_JAM_CAPACITY` defaults to 10, clamped to 2..50 accounts per room. Public playlist imports reuse `MUSIKE_IMPORT_MAX_ITEMS` with default 1,000 and cap 5,000; Google's existing separate import bounds remain. No new environment/compose file is supplied.
+
+Normal device transfer requires pause acknowledgement. After an output becomes stale (45 seconds without inbound client activity), the user may explicitly choose Take over playback. SSE server heartbeats do not establish client liveness. A disconnected device's buffered audio cannot be guaranteed silent. Validate normal transfer, stale explicit takeover and rejected old-epoch writes on demo.
+
+Admins may directly edit a Malaysian +60 phone number without OTP; the user explicitly approved this behavior. Edits reject collisions, keep UUID ownership, revoke sessions and invalidate affected challenges/unredeemed phone invites. Permanent deletion requires typed UUID, blocks self/last-admin deletion, clears jobs/provider/output state and transactionally purges owned data with sanitized audit evidence. Existing operator backups remain governed by their retention policy.
+
+Preserve the working Discord ca-certificates runtime fix. Rebuild the optional adapter to remove temporary SDK file logging, then repeat actual profile/Ready/pause/second-user checks without vendor-created log files. SDK binaries/headers are operator-supplied and excluded from this source package.
+
+Rollback the expanded release with its matching pre-migration source/image and data/secret backup. Do not mix old source with migrated social data or apply historical patches from the archive after this revision. See ARCHITECTURE.md section 7 and docs/PLATFORM-REMOVAL.md for current contracts.
+
+---
+
+## Historical deployment notes (earlier revisions; superseded above)
+
 # Deployment notes — targeted bugfix source overlay
 
 Date: 19 November 2026. Base: uploaded `Azan-Shah/musike` main commit `da3f88384651cdf8ee487054a50b0effb277cb45`. Apply to this fork; do not rebase onto upstream.

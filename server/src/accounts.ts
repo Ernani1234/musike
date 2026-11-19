@@ -24,6 +24,7 @@ export class Accounts {
   readonly adminPhone: string;
   readonly origin: string;
   readonly now: () => number;
+  onRevoke?: (user: string, deleting: boolean) => Promise<void>;
   private libraries = new Map<string, ReturnType<typeof createLibrary>>();
   private locks = new Map<string, Promise<unknown>>();
   private constructor(db: Database, secret: string, readonly options: AccountOptions) {
@@ -134,7 +135,7 @@ export class Accounts {
       const user = await this.db.get<User>("SELECT * FROM users WHERE phone=?", [phone]);
       const inviteHash = typeof input.invite === "string" ? this.box.hash(input.invite) : "";
       const invite = inviteHash ? await this.db.get("SELECT * FROM invites WHERE hash=? AND used_by IS NULL AND expires_at>?", [inviteHash, this.now()]) : null;
-      const eligible = user ? user.status === "approved" : phone === this.adminPhone || !!(invite && (!invite.phone || invite.phone === phone));
+      const eligible = user ? user.status === "approved" : (phone === this.adminPhone && !await this.db.get("SELECT key FROM migrations WHERE key='first-admin-v1'")) || !!(invite && (!invite.phone || invite.phone === phone));
       const id = randomUUID(); const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
       await this.db.run("INSERT INTO otps(id,phone,ip,hash,invite_hash,expires_at,created_at,delivery,remember) VALUES(?,?,?,?,?,?,?,?,?)",
         [id, phone, ip, this.box.hash(`${id}:${code}`), inviteHash || null, this.now() + expiry * 1000, this.now(), eligible ? "pending" : "decoy", input.remember ? 1 : 0]);
@@ -177,7 +178,7 @@ export class Accounts {
       if (user?.status === "disabled" || user?.status === "pending") throw fail(403, "Account is not approved");
       if (!user) {
         const invite = row.invite_hash ? await this.db.get("SELECT * FROM invites WHERE hash=? AND used_by IS NULL AND expires_at>?", [row.invite_hash, this.now()]) : null;
-        if (row.phone !== this.adminPhone && (!invite || (invite.phone && invite.phone !== row.phone))) throw fail(403, "Invitation required");
+        if (!(row.phone === this.adminPhone && !await this.db.get("SELECT key FROM migrations WHERE key='first-admin-v1'")) && (!invite || (invite.phone && invite.phone !== row.phone))) throw fail(403, "Invitation required");
         const id = randomUUID();
         const statements = [
           { sql: "INSERT INTO users(id,phone,created_at) VALUES(?,?,?)", params: [id, row.phone, this.now()] },
@@ -233,20 +234,57 @@ export class Accounts {
     ]);
     return this.sessionCookies("", "", 0).map((cookie) => cookie.replace(/Max-Age=\d+/, "Max-Age=0"));
   }
-  async changeUser(actor: string, id: string, patch: { role?: string; status?: string; name?: string }, ip: string) {
+  async changeUser(actor: string, id: string, patch: { role?: string; status?: string; name?: string; phone?: unknown }, ip: string) {
     if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw fail(400, "Invalid user settings");
-    return this.lock("users", async () => {
+    return this.lock("verify", () => this.lock("users", async () => {
       const user = await this.db.get<User>("SELECT * FROM users WHERE id=?", [id]); if (!user) throw fail(404, "User not found");
+      await this.requireAdmin(actor);
+      const phone = patch.phone === undefined ? user.phone : phoneOf(patch.phone);
+      const collision = await this.db.get("SELECT id FROM users WHERE phone=? AND id<>?", [phone, id]);
+      if (collision) throw fail(409, "Phone number is already assigned");
       const role = patch.role ?? user.role; const status = patch.status ?? user.status; const name = patch.name ?? user.name;
       if (!["admin", "user"].includes(role) || !["approved", "pending", "disabled"].includes(status) || typeof name !== "string" || name.length > 80) throw fail(400, "Invalid user settings");
       if (user.role === "admin" && user.status === "approved" && (role !== "admin" || status !== "approved")) {
         const count = await this.db.get("SELECT count(*) AS n FROM users WHERE role='admin' AND status='approved'");
         if (count!.n <= 1) throw fail(409, "Cannot remove the last approved administrator");
       }
-      await this.db.run("UPDATE users SET role=?,status=?,name=? WHERE id=?", [role, status, name, id]);
-      if (status !== "approved") await this.db.batch([{ sql: "DELETE FROM sessions WHERE user_id=?", params: [id] }, { sql: "DELETE FROM clients WHERE user_id=?", params: [id] }]);
-      await this.audit(actor, "admin.user.update", id, ip); return this.db.get<User>("SELECT * FROM users WHERE id=?", [id]);
-    });
+      const revoke = phone !== user.phone || status !== "approved";
+      if (revoke) await this.onRevoke?.(id, false);
+      await this.db.batch([
+        { sql: "UPDATE users SET role=?,status=?,name=?,phone=? WHERE id=?", params: [role, status, name, phone, id] },
+        ...(revoke ? [{ sql: "DELETE FROM sessions WHERE user_id=?", params: [id] }, { sql: "DELETE FROM clients WHERE user_id=?", params: [id] }] : []),
+        ...(phone !== user.phone ? [{ sql: "DELETE FROM otps WHERE phone IN (?,?)", params: [user.phone, phone] },
+          { sql: "DELETE FROM invites WHERE phone IN (?,?) AND used_by IS NULL", params: [user.phone, phone] }] : []),
+        { sql: "INSERT INTO audit(at,actor,action,target,ip) VALUES(?,?,'admin.user.update',?,?)", params: [this.now(), actor, id, ip] },
+        { sql: "DELETE FROM audit WHERE id NOT IN (SELECT id FROM audit ORDER BY id DESC LIMIT 1000)" },
+      ]);
+      this.options.onAudit?.({ event: "audit", actor, action: "admin.user.update", target: id, ip, level: "info" });
+      return this.db.get<User>("SELECT id,phone,name,role,status,last_seen FROM users WHERE id=?", [id]);
+    }));
+  }
+  private async requireAdmin(actor: string) {
+    if (!await this.db.get("SELECT id FROM users WHERE id=? AND role='admin' AND status='approved'", [actor])) throw fail(403, "Administrator access required");
+  }
+  async deleteUser(actor: string, id: string, confirmation: unknown, ip: string) {
+    if (confirmation !== id) throw fail(400, "Type the user ID to confirm deletion");
+    return this.lock("verify", () => this.lock("users", async () => {
+      await this.requireAdmin(actor);
+      if (actor === id) throw fail(409, "Cannot delete your own account");
+      const user = await this.db.get<User>("SELECT * FROM users WHERE id=?", [id]);
+      if (!user) throw fail(404, "User not found");
+      if (user.role === "admin" && user.status === "approved" && (await this.db.get("SELECT count(*) AS n FROM users WHERE role='admin' AND status='approved'"))!.n <= 1) throw fail(409, "Cannot remove the last approved administrator");
+      await this.onRevoke?.(id, true);
+      await this.db.batch([
+        { sql: "DELETE FROM otps WHERE phone=? OR invite_hash IN (SELECT hash FROM invites WHERE created_by=? OR used_by=? OR phone=?)", params: [user.phone, id, id, user.phone] },
+        { sql: "DELETE FROM invites WHERE created_by=? OR used_by=? OR phone=?", params: [id, id, user.phone] },
+        { sql: "DELETE FROM users WHERE id=?", params: [id] },
+        { sql: "INSERT INTO audit(at,actor,action,target,ip) VALUES(?,?,'admin.user.delete',?,?)", params: [this.now(), actor, id, ip] },
+        { sql: "DELETE FROM audit WHERE id NOT IN (SELECT id FROM audit ORDER BY id DESC LIMIT 1000)" },
+      ]);
+      this.libraries.delete(id);
+      this.options.onAudit?.({ event: "audit", actor, action: "admin.user.delete", target: id, ip, level: "info" });
+      return { ok: true };
+    }));
   }
   async invite(actor: string, phone: unknown, ip: string) {
     const code = randomBytes(18).toString("base64url"); const bound = phone ? phoneOf(phone) : null;

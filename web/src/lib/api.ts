@@ -13,7 +13,7 @@ import {
 } from "./apiTypes";
 import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, Library, Playlist, Track } from "./types";
 
-// The HTTP backend: the Musike server (web app, desktop app). The Android build swaps this module for native/api.ts.
+// Same-origin HTTP backend for the website and installed PWA.
 export * from "./apiTypes";
 
 /** The server answers errors (and YouTube Music answers names, like genres) in the app's language. */
@@ -117,11 +117,11 @@ export const api: MusikeApi = {
   updateYtdlp: (channel: Channel) => request<SystemJob>("/api/system/ytdlp", { method: "POST", json: { channel } }),
 };
 
-/** What a media element plays for a track: here, the server's stream proxy. The Android backend resolves it on the phone. */
+/** What a media element plays for a track: the server's same-origin stream proxy. */
 export const streamSource = (id: string, kind: "audio" | "video", quality: "sd" | "hd", trace = playbackTrace()): string | Promise<string> =>
   kind === "audio" ? `/api/stream/${id}/audio?trace=${encodeURIComponent(trace)}` : `/api/stream/${id}/video?q=${quality}&trace=${encodeURIComponent(trace)}`;
 
-/** Saves a text file the way this platform does it: a browser download (the desktop app shows "Save as"). */
+/** Saves a text file the way this platform does it: a browser download. */
 export async function saveFile(name: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
   const a = Object.assign(document.createElement("a"), { href: url, download: name });
@@ -131,10 +131,10 @@ export async function saveFile(name: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** Only the Android app needs its own bridge to the system's media controls. */
+/** Browser media controls use the Media Session API. */
 export const systemMedia: SystemMedia | null = null;
 
-/** What this build can do. The Android build has no video yet, no yt-dlp to manage, and retries expired streams. */
+/** Supported web/PWA capabilities. */
 export const capabilities = { video: true, engineSettings: true, retryOnError: false };
 
 /** Media elements hide the HTTP error body; fetch it to show the real reason. */

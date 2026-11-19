@@ -49,7 +49,9 @@ const server = createServer(async (req, res) => {
             const event = JSON.parse(line);
             if (typeof event.ready === "boolean") session.ready = event.ready;
             if (event.event === "discord.sdk.updated") session.published = event.ok === true;
-            log("discord.sdk", { user: data.user, ready: session.ready, published: session.published });
+            const codes = {};
+            for (const key of ["status", "error", "code"]) if (Number.isSafeInteger(event[key]) && Math.abs(event[key]) <= 2147483647) codes[key] = event[key];
+            log("discord.sdk", { user: data.user, ready: session.ready, published: session.published, ...codes });
           } catch { log("discord.sdk.protocol_error", { user: data.user }); }
         }
       });

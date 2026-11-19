@@ -11,7 +11,7 @@ export interface PlaybackSnapshot {
 export interface PlaybackCommand { id: string; action: string; args: unknown[]; at: number; }
 export interface SyncView {
   deviceId: string; active: string | null; epoch: number; revision: number; updatedAt: number; snapshot: PlaybackSnapshot;
-  devices: { id: string; name: string; online: boolean }[]; command: PlaybackCommand | null; transfer: string | null;
+  takeoverAvailable: boolean; devices: { id: string; name: string; online: boolean }[]; command: PlaybackCommand | null; transfer: string | null;
 }
 type Device = { id: string; session: string; name: string; seen: number; bucketAt: number; count: number; listeners: Set<(view: SyncView) => void> };
 type Room = { active: string | null; epoch: number; revision: number; updatedAt: number; snapshot: PlaybackSnapshot;
@@ -31,7 +31,7 @@ export function cleanSnapshot(value: unknown): PlaybackSnapshot {
   if (s.index < 0 || s.index >= Math.max(1, queue.length)) throw fail(400, "Invalid playback index");
   return { queue, original, index: s.index, position: s.position, duration: s.duration, status: s.status, shuffle: s.shuffle, repeat: s.repeat, autoRadio: s.autoRadio };
 }
-function cleanCommand(action: unknown, args: unknown): { action: string; args: unknown[] } {
+export function cleanCommand(action: unknown, args: unknown): { action: string; args: unknown[] } {
   if (typeof action !== "string" || !Array.isArray(args)) throw fail(400, "Invalid playback command");
   if (["toggle", "next", "prev", "clearUpcoming", "toggleShuffle", "cycleRepeat"].includes(action) && !args.length) return { action, args: [] };
   if (["playTrack", "playNext", "addToQueue", "startRadio"].includes(action) && args.length === 1) return { action, args: [sanitizeTrack(args[0])] };
@@ -52,17 +52,12 @@ export class PlaybackSync {
   private stopped = false;
   onChange?: (user: string, snapshot: PlaybackSnapshot) => void;
   constructor(readonly accounts: Accounts, private now = Date.now) {}
-  private live(d?: Device) { return !!d && (d.listeners.size > 0 || this.now() - d.seen < 45000); }
-  /** Reap devices whose tabs died without releasing: drop stale entries, a dead active output, and hung transfers. */
-  private async reconcile(user: string, room: Room, claimant?: string) {
+  private live(d?: Device) { return !!d && this.now() - d.seen < 45000; }
+  /** A stale output remains fenced until the user explicitly takes over. SSE writes prove no client activity. */
+  private async reconcile(user: string, room: Room) {
     let changed = false;
-    for (const [id, d] of room.devices) if (id !== room.active && !d.listeners.size && this.now() - d.seen > 180000) { room.devices.delete(id); changed = true; }
-    if (room.transfer && (this.now() - room.transferAt > 30000 || !this.live(room.active ? room.devices.get(room.active) : undefined))) { room.transfer = null; changed = true; }
-    if (room.active && !this.live(room.devices.get(room.active))) {
-      if (claimant && claimant !== room.active) room.active = claimant;
-      else if (!claimant) { room.snapshot = { ...room.snapshot, status: "paused" }; room.active = null; }
-      room.epoch++; room.seq = 0; room.commands = []; room.transfer = null; changed = true;
-    }
+    for (const [id, d] of room.devices) if (id !== room.active && this.now() - d.seen > 180000 && !d.listeners.size) { room.devices.delete(id); changed = true; }
+    if (room.transfer && this.now() - room.transferAt > 30000) { room.transfer = null; changed = true; }
     if (changed) await this.changed(user, room, true);
   }
   private async room(user: string): Promise<Room> {
@@ -79,7 +74,7 @@ export class PlaybackSync {
   }
   private view(room: Room, id: string): SyncView {
     return { deviceId: id, active: room.active, epoch: room.epoch, revision: room.revision, updatedAt: room.updatedAt, snapshot: room.snapshot,
-      devices: [...room.devices.values()].map((d) => ({ id: d.id, name: d.name, online: this.live(d) })),
+      takeoverAvailable: !!room.active && !this.live(room.devices.get(room.active)), devices: [...room.devices.values()].map((d) => ({ id: d.id, name: d.name, online: this.live(d) })),
       command: room.active === id && room.commands[0] && this.now() - room.commands[0].at < 15000 ? room.commands[0] : null, transfer: room.transfer };
   }
   private async save(user: string, room: Room) {
@@ -87,11 +82,11 @@ export class PlaybackSync {
       [user, JSON.stringify({ active: room.active, epoch: room.epoch, revision: room.revision, snapshot: room.snapshot }), this.now()]);
     room.savedAt = this.now();
   }
-  private async changed(user: string, room: Room, durable = true) {
+  private async changed(user: string, room: Room, durable = true, notify = true) {
     room.revision++; room.updatedAt = this.now();
     if (durable || this.now() - room.savedAt >= 5000) await this.save(user, room);
     for (const d of room.devices.values()) for (const send of d.listeners) send(this.view(room, d.id));
-    if (room.active && this.now() - (room.devices.get(room.active)?.seen ?? 0) < 45000) this.onChange?.(user, room.snapshot);
+    if (notify && room.active && this.now() - (room.devices.get(room.active)?.seen ?? 0) < 45000) this.onChange?.(user, room.snapshot);
   }
   async register(user: string, session: string, clientId: unknown, name: unknown) {
     if (typeof clientId !== "string" || !/^[\w-]{8,80}$/.test(clientId)) throw fail(400, "Invalid client identity");
@@ -107,10 +102,10 @@ export class PlaybackSync {
       device.session = session; device.seen = this.now(); return this.view(room, id);
     });
   }
-  async read(user: string, session: string, id: string) {
+  async read(user: string, session: string, id: string, touch = true) {
     const room = this.rooms.get(user); const d = room?.devices.get(id);
     if (!room || !d || d.session !== session) throw fail(404, "Playback device not registered");
-    d.seen = this.now(); return this.view(room, id);
+    if (touch) d.seen = this.now(); return this.view(room, id);
   }
   async subscribe(user: string, session: string, id: string, send: (view: SyncView) => void) {
     await this.read(user, session, id); const room = this.rooms.get(user)!; const device = room.devices.get(id)!;
@@ -121,10 +116,17 @@ export class PlaybackSync {
     return this.accounts.lock(`playback:${user}`, async () => {
       await this.read(user, session, id); const room = this.rooms.get(user)!;
       const device = room.devices.get(id)!;
-      await this.reconcile(user, room, id);
+      await this.reconcile(user, room);
       if (this.now() - device.bucketAt >= 60000) { device.bucketAt = this.now(); device.count = 0; }
       if (++device.count > 120) throw fail(429, "Playback command rate limit reached");
+      if (input.type === "ping") return this.view(room, id);
       if (input.type === "claim") {
+        if (room.active && room.active !== id && !this.live(room.devices.get(room.active))) {
+          if (input.takeover !== true) throw fail(409, "Previous output is unreachable. Use Take over playback.");
+          room.active = id; room.snapshot = { ...room.snapshot, status: "paused" }; room.epoch++; room.seq = 0; room.commands = []; room.transfer = null;
+          if (room.snapshot.queue.length) room.commands.push({ id: randomUUID(), action: "resume", args: [], at: this.now() });
+          await this.changed(user, room); return this.view(room, id);
+        }
         if (room.transfer && room.transfer !== id) throw fail(409, "Another playback transfer is pending");
         if (room.active && room.active !== id) {
           room.transfer = id; room.transferAt = this.now(); // The old device must actually pause and acknowledge before a grant.
@@ -164,6 +166,20 @@ export class PlaybackSync {
       throw fail(400, "Invalid synchronization action");
     });
   }
+  hasPendingJam(user: string) { return this.rooms.get(user)?.commands.some(c => c.action === "jam" || c.action === "resume") ?? false; }
+  async applyJam(user: string, snapshot: PlaybackSnapshot) {
+    return this.accounts.lock(`playback:${user}`, async () => {
+      const room = await this.room(user); room.snapshot = cleanSnapshot(snapshot);
+      room.commands = room.active ? [{ id: randomUUID(), action: "jam", args: [room.snapshot], at: this.now() }] : [];
+      await this.changed(user, room, true, false);
+    });
+  }
+  current(user: string) {
+    const room = this.rooms.get(user); if (!room) return null;
+    const device = room.active ? room.devices.get(room.active) : null;
+    return { outputOnline: this.live(device ?? undefined), track: room.snapshot.queue[room.snapshot.index] ?? null, status: this.live(device ?? undefined) ? room.snapshot.status : "paused", device: device?.name ?? null, online: [...room.devices.values()].some(d => this.live(d)) };
+  }
+  async dropUser(user: string) { this.rooms.delete(user); }
   async close() {
     this.stopped = true;
     for (const [user, room] of this.rooms) await this.accounts.lock(`playback:${user}`, () => this.save(user, room));

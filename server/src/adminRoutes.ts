@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { PlaybackSync } from "./playbackSync.js";
 import type { Accounts } from "./accounts.js";
 import { fail } from "./accounts.js";
 import { config } from "./config.js";
@@ -17,7 +18,7 @@ function validateMedia(value: MediaSettings) {
     !["standard", "high"].includes(value.audioQuality) || !["sd", "hd"].includes(value.videoQuality) || !Array.isArray(value.ytdlpArgs) || value.ytdlpArgs.length > 50 ||
     value.ytdlpArgs.some((arg) => typeof arg !== "string" || arg.length > 500 || /^--(?:exec|exec-before-download|output|paths|config-locations|print-to-file|batch-file|postprocessor-args)(?:=|$)/.test(arg) || ["-o", "-P", "-a"].includes(arg))) throw fail(400, "Invalid server settings");
 }
-export async function registerAdmin(app: FastifyInstance, accounts: Accounts | null) {
+export async function registerAdmin(app: FastifyInstance, accounts: Accounts | null, sync?: PlaybackSync | null) {
   if (accounts) { const media = await accounts.setting("media", mediaSettings()); validateMedia(media); applyMedia(media); }
   const auditLog = app.log.child({ component: "audit" }, { level: "info" });
   const requireAdmin = async (req: FastifyRequest) => {
@@ -43,22 +44,27 @@ export async function registerAdmin(app: FastifyInstance, accounts: Accounts | n
     applyMedia(next.media); clearResolved(); await trimCache();
     return next;
   });
-  app.get("/api/admin/users", { preHandler: requireAdmin }, async () => ({ users: await accounts!.db.all("SELECT id,phone,name,role,status,last_seen FROM users ORDER BY created_at LIMIT 200") }));
+  const offsetOf = (req: FastifyRequest) => { const offset = Number((req.query as { offset?: string }).offset ?? 0); if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) throw fail(400, "Invalid page offset"); return offset; };
+  app.get("/api/admin/users", { preHandler: requireAdmin }, async req => ({ users: await accounts!.db.all("SELECT id,phone,name,role,status,last_seen FROM users ORDER BY created_at,id LIMIT 200 OFFSET ?", [offsetOf(req)]) }));
   app.patch("/api/admin/users/:id", { preHandler: requireAdmin }, async (req) => {
-    const { id } = req.params as { id: string }; const body = req.body as { role?: string; status?: string; name?: string };
+    const { id } = req.params as { id: string }; const body = req.body as { role?: string; status?: string; name?: string; phone?: unknown };
     return accounts!.changeUser(req.musikeUser!.id, id, body, req.realClientIp);
+  });
+  app.delete("/api/admin/users/:id", { preHandler: requireAdmin, bodyLimit: 1024 }, async (req) => {
+    const { id } = req.params as { id: string };
+    return accounts!.deleteUser(req.musikeUser!.id, id, (req.body as { confirmation?: unknown })?.confirmation, req.realClientIp);
   });
   app.post("/api/admin/invites", { preHandler: requireAdmin }, async (req) => accounts!.invite(req.musikeUser!.id,
     (req.body as { phone?: unknown } | undefined)?.phone, req.realClientIp));
-  app.get("/api/admin/ops", { preHandler: requireAdmin }, async () => {
+  app.get("/api/admin/ops", { preHandler: requireAdmin }, async req => {
     const since = accounts!.now() - 45_000;
-    const [users, clients, events, errors, usage] = await Promise.all([
+    const [users, clients, events, errors, usage, connected] = await Promise.all([
       accounts!.db.get("SELECT count(*) AS n FROM users"),
-      accounts!.db.all("SELECT c.id,c.user_id,c.ip,c.last_activity,u.name FROM clients c JOIN users u ON u.id=c.user_id WHERE c.last_activity>? AND u.status='approved' ORDER BY c.last_activity DESC LIMIT 100", [since]),
+      accounts!.db.all("SELECT c.id,c.user_id,c.ip,c.last_activity,u.name FROM clients c JOIN users u ON u.id=c.user_id WHERE c.last_activity>? AND u.status='approved' ORDER BY c.last_activity DESC,c.id LIMIT 100 OFFSET ?", [since, offsetOf(req)]),
       accounts!.db.all("SELECT at,actor,action,target,ip,level FROM audit ORDER BY id DESC LIMIT 50"),
-      accounts!.db.all("SELECT at,actor,action,target,ip,level FROM audit WHERE level='error' ORDER BY id DESC LIMIT 50"), cacheUsage(),
+      accounts!.db.all("SELECT at,actor,action,target,ip,level FROM audit WHERE level='error' ORDER BY id DESC LIMIT 50"), cacheUsage(), accounts!.db.get("SELECT count(DISTINCT c.user_id) AS n FROM clients c JOIN users u ON u.id=c.user_id WHERE c.last_activity>? AND u.status='approved'", [since]),
     ]);
-    return { users: users!.n, connectedUsers: new Set(clients.map((c) => c.user_id)).size, clients, cache: usage, events, errors };
+    return { playback: [...new Set(clients.map(c => c.user_id as string))].map(id => ({ userId: id, ...sync?.current(id) })), users: users!.n, connectedUsers: connected!.n, clients, cache: usage, events, errors };
   });
   return requireAdmin;
 }

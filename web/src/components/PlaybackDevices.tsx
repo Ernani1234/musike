@@ -17,7 +17,7 @@ export function PlaybackDevices() {
           <span>{device.name}{device.id === view.deviceId ? ` · ${f.thisDevice}` : ""}</span>
           <span className="text-fg-2">{device.id === view.active ? f.activeDevice : device.online ? f.deviceOnline : f.deviceOffline}</span>
         </li>)}</ul>
-        <button type="button" className="button-secondary" disabled={!connected || !!view?.transfer || view?.active === view?.deviceId} onClick={() => void claimPlayback()}>{f.playHere}</button>
+        <button type="button" className="button-secondary" disabled={!connected || !!view?.transfer || view?.active === view?.deviceId} onClick={() => void claimPlayback(!!view?.takeoverAvailable)}>{view?.takeoverAvailable ? f.takeover : f.playHere}</button>
       </div>
     </Modal>}
   </>;

@@ -1,3 +1,9 @@
+import { PlaylistImport } from "./playlistImport.js";
+import { registerPlaylistImport } from "./playlistImportRoutes.js";
+import { Social } from "./social.js";
+import { registerSocial } from "./socialRoutes.js";
+import { Jams } from "./jams.js";
+import { registerJams } from "./jamRoutes.js";
 import { playbackStage, safePlaybackFields, traceId, withPlaybackTrace, type PlaybackFields, type TraceContext } from "./playbackDiagnostics.js";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
@@ -80,6 +86,7 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
   const audioCache = new AudioCache(options.audio?.candidates, options.audio?.transport, (message) => app.log.debug(message));
   let accounts: Accounts | null = null;
   let google: GoogleImport | null = null;
+  let playlistImport: PlaylistImport | null = null;
   const streamFailures = new Map<string, { at: number; status: number; error: string; code?: string }>();
   const failureKey = (req: import("fastify").FastifyRequest, id: string) => `${req.musikeUser?.id ?? "legacy"}:${contexts.get(req)?.trace.traceId}:${id}`;
   const probeStream = (req: import("fastify").FastifyRequest, reply: import("fastify").FastifyReply, id: string) => {
@@ -89,7 +96,7 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
     else { streamFailures.delete(key); reply.send({ ok: true }); }
     playbackStage("stream.probe", { videoId: id, status: failure?.status ?? 200 }); return true;
   };
-  app.addHook("onClose", async () => { await google?.close(); await audioCache.close(); await accounts?.close(); });
+  app.addHook("onClose", async () => { await playlistImport?.close(); await google?.close(); await audioCache.close(); await accounts?.close(); });
 
   app.setErrorHandler((err, req, reply) => {
     const e = err as Error & { statusCode?: number };
@@ -114,8 +121,20 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
     app.log.child({ component: "audit" }, { level: "info" }).info(event); options.onAudit?.(event);
   } }, proxy);
   const sync = registerPlayback(app, accounts);
-  registerDiscord(app, accounts, sync, options.discord);
-  await registerAdmin(app, accounts);
+  const discord = registerDiscord(app, accounts, sync, options.discord);
+  const jams = accounts && sync ? new Jams(accounts, sync) : null;
+  const social = accounts && sync ? new Social(accounts, sync) : null;
+  registerJams(app, jams); registerSocial(app, social); await jams?.recover();
+  if (sync) { const previous = sync.onChange; sync.onChange = (user, snapshot) => { previous?.(user, snapshot); void jams?.observe(user, snapshot).catch(() => app.log.warn({ event: "jam.observe_failed" })); }; }
+  await registerAdmin(app, accounts, sync);
+  playlistImport = accounts ? new PlaylistImport(accounts) : null;
+  registerPlaylistImport(app, playlistImport); await playlistImport?.recover();
+  if (accounts) accounts.onRevoke = async (user, deleting) => {
+    await Promise.all([playlistImport?.cancelUser(user), google?.cancelUser(user)]);
+    await jams?.revokeUser(user, deleting);
+    if (deleting) await Promise.allSettled([google?.disconnect(user), discord?.disconnect(user)]);
+    await sync?.dropUser(user);
+  };
   google = accounts ? new GoogleImport(accounts, options.google) : null;
   registerGoogle(app, google); await google?.recover(); google?.schedule();
   } catch (error) { await app.close(); throw error; }

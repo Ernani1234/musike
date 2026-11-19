@@ -54,3 +54,15 @@
 ### Validation and delivery
 
 See `TEST-RESULTS.md` and `ACCEPTANCE-CHECKLIST.md`. The source overlay includes full changed/new files, architecture, implementation mapping and operator setup notes. Operator-owned `.env`, compose and deployment files are excluded.
+
+
+## 19 November 2026 — expanded web/PWA production revision
+
+- Resolved BUG-008 in source: retired Electron/Capacitor applications and native build/installer wiring; repaired source Docker inputs and regenerated the pnpm lockfile without adding package versions.
+- Updated BUG-007 mitigation with bounded complete next-track bytes, active-element Blob handoff, safe cancellation and one fresh foreground recovery; Samsung acceptance remains pending.
+- Reviewed BUG-013 with real inbound liveness, bounded transfer recovery and user-triggered stale takeover; preserved old-epoch fencing and normal pause acknowledgements.
+- Preserved the working BUG-014 Discord system CA fix; removed temporary SDK file logging and forwarded allowlisted numeric diagnostics to stdout.
+- Implemented BUG-015 public playlist-link import with per-item progress, owner-scoped checkpoints, partial failure/retry and duplicate prevention.
+- Implemented BUG-016 friend requests, groups, viewer/editor sharing, explicit copies, opt-in presence and versioned jam rooms above private device ownership.
+- Resolved BUG-017 in source: paged admin playback visibility, guarded audited permanent deletion and direct Malaysian phone editing without OTP, as explicitly approved; sessions/challenges are revoked and UUID ownership stays stable.
+- Kept earlier bug dispositions factual, historical Hermes reports intact and real provider/device/Docker acceptance separate from fixtures.

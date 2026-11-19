@@ -105,15 +105,14 @@ test("radio stale responses cannot replace manual intent and authentication erro
     assert.equal(p().status, "error"); assert.equal(f.h.notices.at(-1)[2].label, "Sign in again");
   } finally { release?.([]); await f.cleanup(); }
 });
-test("transient media failures retry twice without a visibility change; deliberate pause remains paused", async () => {
+test("two transient retries allow one fresh foreground recovery; deliberate pause remains paused", async () => {
   const f = await harness(); const p = () => f.player.getState();
   try {
     p().setAutoRadio(false); p().playList([track(1), track(2)]); await f.tick();
     f.h.elements[0].emit("error"); await new Promise((r) => setTimeout(r, 550)); await f.tick(); assert.equal(p().status, "playing"); assert.equal(p().index, 0);
     f.h.elements[0].emit("error"); await new Promise((r) => setTimeout(r, 1050)); await f.tick(); assert.equal(p().status, "playing");
     f.h.elements[0].emit("error"); await f.tick(); assert.equal(p().status, "error"); assert.equal(p().index, 0);
-    f.browser.dispatchEvent(new Event("online")); await f.tick(); assert.equal(p().status, "error");
-    p().toggle(); await f.tick();
+    f.browser.dispatchEvent(new Event("online")); await f.tick(); assert.equal(p().status, "playing");
     p().toggle(); await f.tick(); const plays = f.h.plays;
     f.document.visibilityState = "hidden"; f.document.dispatchEvent(new Event("visibilitychange"));
     f.document.visibilityState = "visible"; f.document.dispatchEvent(new Event("visibilitychange")); await f.tick();

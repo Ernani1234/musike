@@ -317,3 +317,17 @@ export async function ytdlpSearch(query: string, limit = 20, signal?: AbortSigna
   };
   return data.entries ?? [];
 }
+
+/** Public playlist metadata only. The URL is reconstructed from a validated list ID. */
+export async function ytdlpPlaylist(id: string, limit: number, signal?: AbortSignal) {
+  if (!/^[\w-]{10,150}$/.test(id)) throw new HttpError(400, "Invalid YouTube playlist");
+  const stdout = await run(["-J", "--flat-playlist", "--yes-playlist", "--ignore-errors", "--no-warnings", "--playlist-end", String(limit), "--", `https://www.youtube.com/playlist?list=${id}`], 60000, signal);
+  const data = JSON.parse(stdout) as { title?: string; entries?: unknown[] };
+  if (!Array.isArray(data.entries)) throw new HttpError(502, "Playlist metadata unavailable");
+  return { title: (data.title || "YouTube playlist").slice(0, 80), entries: data.entries.slice(0, limit).map(entry => {
+    const e = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
+    const field = (key: string, max: number) => typeof e[key] === "string" ? e[key].slice(0, max) : "";
+    return { id: field("id", 11), title: field("title", 300), channel: field("channel", 300), uploader: field("uploader", 300),
+      duration: typeof e.duration === "number" && Number.isFinite(e.duration) ? Math.max(0, Math.min(604800, e.duration)) : 0, availability: field("availability", 40) };
+  }) };
+}

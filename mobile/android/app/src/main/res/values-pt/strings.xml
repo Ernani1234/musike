@@ -1,8 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="playback_channel">Reprodução</string>
-    <string name="playback_play">Tocar</string>
-    <string name="playback_pause">Pausar</string>
-    <string name="playback_next">Próxima</string>
-    <string name="playback_previous">Anterior</string>
-</resources>

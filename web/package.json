@@ -6,15 +6,10 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
-    "build:native": "tsc --noEmit -p tsconfig.native.json && vite build --mode native",
     "preview": "vite preview --host",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.native.json"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@capacitor/app": "8.1.2",
-    "@capacitor/core": "8.5.3",
-    "@capacitor/filesystem": "8.1.5",
-    "@capacitor/share": "8.0.3",
     "@fontsource-variable/geist": "5.3.0",
     "@fontsource-variable/geist-mono": "5.3.0",
     "@phosphor-icons/react": "2.1.10",

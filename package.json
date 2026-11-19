@@ -8,8 +8,6 @@
     "dev": "pnpm --parallel --filter ./server --filter ./web dev",
     "build": "pnpm --filter ./web build",
     "start": "pnpm --filter ./server start",
-    "desktop": "pnpm --filter musike-desktop start",
-    "installer": "pnpm --filter musike-desktop dist",
     "typecheck": "pnpm -r typecheck"
   },
   "packageManager": "pnpm@10.14.0"

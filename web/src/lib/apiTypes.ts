@@ -2,8 +2,7 @@ import type { FailureKind } from "./playbackDiagnostics";
 import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, Library, Playlist, Track } from "./types";
 
 /**
- * What the app needs from a backend. The web app and the desktop app talk to the Musike server over HTTP
- * (lib/api.ts); the Android app does the same work on the phone (native/api.ts). The build picks one.
+ * What the app needs from a backend. The website and installed PWA talk to the Musike server over HTTP (lib/api.ts).
  */
 
 export type ErrorCode = "tool_missing" | "maybe_outdated" | "bot_check" | "server_busy";
@@ -58,7 +57,7 @@ export interface Prepared {
 
 /**
  * The operating system's media controls (notification, lock screen, headphone buttons) when the browser's
- * Media Session can't reach them: the Android app. Absent elsewhere.
+ * Media Session cannot reach them. The browser build does not install a native bridge.
  */
 export interface SystemMedia {
   setTrack(track: { title: string; artist: string; album: string; artwork: string }): void;

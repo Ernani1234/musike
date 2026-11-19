@@ -9,14 +9,18 @@ export interface SharedPlayback {
   queue: Track[]; original: Track[] | null; index: number; position: number; duration: number; status: "idle" | "loading" | "playing" | "paused" | "error";
   shuffle: boolean; repeat: "off" | "all" | "one"; autoRadio: boolean;
 }
-interface View { deviceId: string; active: string | null; epoch: number; revision: number; updatedAt: number; snapshot: SharedPlayback;
+interface View { takeoverAvailable?: boolean; deviceId: string; active: string | null; epoch: number; revision: number; updatedAt: number; snapshot: SharedPlayback;
   devices: { id: string; name: string; online: boolean }[]; command: { id: string; action: string; args: unknown[] } | null; transfer: string | null; }
 export const usePlaybackDevices = create<{ enabled: boolean; connected: boolean; view: View | null; error: string }>(() => ({ enabled: false, connected: false, view: null, error: "" }));
 let allowed = true;
+let jamControl: ((action: string, args: unknown[]) => unknown) | null = null;
+export const setJamControl = (control: typeof jamControl) => { jamControl = control; };
+let alignJam: ((snapshot: SharedPlayback) => void) | null = null;
+export const alignJamPlayback = (snapshot: SharedPlayback) => alignJam?.(snapshot);
 export const playbackCanOutput = () => allowed;
-let claim: (() => Promise<void>) | null = null;
+let claim: ((takeover?: boolean) => Promise<void>) | null = null;
 let release: (() => Promise<void>) | null = null;
-export const claimPlayback = () => claim?.();
+export const claimPlayback = (takeover = false) => claim?.(takeover);
 export const releasePlayback = () => release?.() ?? Promise.resolve();
 type Player = SharedPlayback & { suspendOutput: () => void; resumeOutput: (snapshot: SharedPlayback) => void; [key: string]: unknown };
 type Store = typeof usePlayer;
@@ -73,7 +77,8 @@ export function startPlaybackSync(store: Store) {
         if (!allowed || view?.transfer || view?.command?.id !== command.id) return;
         applying = true;
         try {
-          if (command.action === "resume") store.getState().resumeOutput(next.snapshot);
+          if (command.action === "resume") store.getState().resumeOutput({ ...next.snapshot, status: "playing" });
+          else if (command.action === "jam") store.getState().resumeOutput(command.args[0] as SharedPlayback);
           else await originals.get(command.action)?.(...command.args);
         } finally { applying = false; }
         await publishNow(command.id);
@@ -93,6 +98,7 @@ export function startPlaybackSync(store: Store) {
   for (const [name, original] of originals) patches[name] = (...args: unknown[]) => {
     if (applying) return original(...args);
     if (stopped) return;
+    if (jamControl) return jamControl(name, args);
     if (!view) { toast(getT().features.syncConnecting, "error"); return; }
     if (allowed && !view.transfer) return original(...args);
     if (name === "playList" && Array.isArray(args[0])) {
@@ -110,7 +116,21 @@ export function startPlaybackSync(store: Store) {
     if (changed || state.position !== previous.position) dirty = true;
     if (changed && !publishing) { publishing = true; queueMicrotask(() => { publishing = false; if (dirty) { dirty = false; void publish(); } }); }
   });
-  claim = () => perform(async () => { if (view) receive(await post({ type: "claim" })); });
+  alignJam = (target) => {
+    if (stopped || !allowed || view?.transfer || applying) return;
+    const state = store.getState();
+    // A full command already handles track changes. Polling corrects drift without repeatedly reloading audio.
+    if (state.queue[state.index]?.id !== target.queue[target.index]?.id) {
+      applying = true; try { store.getState().resumeOutput(target); } finally { applying = false; } return;
+    }
+    if (target.status === "paused" && ["playing", "loading"].includes(state.status)) {
+      applying = true; try { store.getState().suspendOutput(); store.setState({ ...target, status: "paused" }); } finally { applying = false; } return;
+    }
+    if (target.status === "playing" && state.status === "playing" && Math.abs(state.position - target.position) > 1.2) {
+      applying = true; try { originals.get("seek")?.(target.position); } finally { applying = false; }
+    }
+  };
+  claim = (takeover = false) => perform(async () => { if (view) receive(await post({ type: "claim", takeover })); });
   release = () => perform(async () => {
     if (!view || !allowed) return;
     applying = true; store.getState().suspendOutput(); applying = false;
@@ -142,6 +162,7 @@ export function startPlaybackSync(store: Store) {
   const timer = setInterval(() => {
     if (dirty && allowed && Date.now() - sentAt >= 5000) { dirty = false; void publish(); }
     if (view?.transfer && allowed && !transferAck && Date.now() - transferAckAt >= 5000) receive(view);
+    if (view && Date.now() - sentAt >= 15000) { sentAt = Date.now(); void perform(async () => receive(await post({ type: "ping" }))); }
     if (Date.now() - lastPacketAt > 45000) controller?.abort();
   }, 1000);
   const resume = () => {
@@ -159,7 +180,7 @@ export function startPlaybackSync(store: Store) {
   addEventListener("pagehide", pagehide);
   void connect();
   return () => {
-    stopped = true; claim = null; release = null; clearInterval(timer); if (reconnect) clearTimeout(reconnect); controller?.abort(); unsubscribe(); removeEventListener("online", resume); removeEventListener("pagehide", pagehide);
+    stopped = true; alignJam = null; jamControl = null; claim = null; release = null; clearInterval(timer); if (reconnect) clearTimeout(reconnect); controller?.abort(); unsubscribe(); removeEventListener("online", resume); removeEventListener("pagehide", pagehide);
     applying = true; store.getState().suspendOutput(); store.setState(Object.fromEntries(originals)); allowed = true;
     usePlaybackDevices.setState({ enabled: false, connected: false, view: null, error: "" });
   };

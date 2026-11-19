@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { desktop } from "../lib/desktop";
 import { en, type Messages } from "./en";
 import { pt } from "./pt";
 
@@ -30,8 +29,6 @@ function readLang(): Lang {
 
 function apply(lang: Lang) {
   document.documentElement.lang = lang;
-  // The desktop shell shows its splash screen before the web app loads: tell it which language to use.
-  desktop?.setLanguage?.(lang);
 }
 
 interface I18nState {

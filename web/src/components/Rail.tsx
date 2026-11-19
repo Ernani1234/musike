@@ -1,3 +1,5 @@
+import { useSession } from "../stores/session";
+import { UsersIcon } from "@phosphor-icons/react";
 import {
   BooksIcon,
   ClockCounterClockwiseIcon,
@@ -21,6 +23,7 @@ import { Logo, LogoMark } from "./Brand";
 import { NamePlaylistDialog } from "./Dialogs";
 
 const nav = [
+  { to: paths.social, key: "social", Icon: UsersIcon, end: false },
   { to: paths.home, key: "home", Icon: HouseIcon, end: true },
   { to: paths.search, key: "search", Icon: MagnifyingGlassIcon, end: false },
   { to: paths.library, key: "library", Icon: BooksIcon, end: false },
@@ -93,6 +96,7 @@ function RailLink({ to, label, sub, end, children }: { to: string; label: string
 }
 
 export function Rail() {
+  const signedIn = useSession(s => !!s.user);
   const t = useT();
   const sidebarPlaylists = useAppearance((s) => s.sidebarPlaylists);
   const playlists = useLibrary((s) => s.playlists);
@@ -112,7 +116,7 @@ export function Rail() {
         </div>
 
         <nav aria-label={t.nav.main} className="flex flex-col gap-1 px-2">
-          {nav.map(({ to, key, Icon, end }) => (
+          {nav.filter(item => item.key !== "social" || signedIn).map(({ to, key, Icon, end }) => (
             <NavLink
               key={to}
               to={to}

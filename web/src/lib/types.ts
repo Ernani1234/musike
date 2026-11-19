@@ -1,4 +1,4 @@
-export interface Origin { provider: "youtube-music"; sourceId: string; kind: "playlist" | "album" | "like" | "history"; }
+export interface Origin { provider: "youtube-music" | "youtube"; sourceId: string; kind: "playlist" | "album" | "like" | "history"; }
 export interface Track {
   origin?: Origin;
   id: string;

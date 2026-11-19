@@ -275,6 +275,7 @@ export class GoogleImport {
     }));
   }
   schedule() { if (!this.configured || this.timer) return; this.timer = setInterval(() => void this.syncDue().catch(() => {}), 60_000); this.timer.unref(); }
+  async cancelUser(user: string) { const job = this.jobs.get(user); job?.controller.abort(); await job?.promise; }
   async close() { this.closed = true; if (this.timer) clearInterval(this.timer); this.queue.close(); for (const job of this.jobs.values()) job.controller.abort();
     await Promise.allSettled([...this.jobs.values()].map((job) => job.promise)); }
 }

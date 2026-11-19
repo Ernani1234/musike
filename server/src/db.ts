@@ -50,6 +50,42 @@ CREATE TABLE discord_states(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENC
 CREATE INDEX discord_states_expiry ON discord_states(expires_at);
 CREATE INDEX discord_states_owner ON discord_states(user_id);
 INSERT INTO migrations(key,value) VALUES('playback-discord-v1','1');`;
+const socialSchema = `
+CREATE TABLE playlist_imports(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,source_id TEXT NOT NULL,destination_id TEXT,status TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,summary TEXT NOT NULL);
+CREATE INDEX playlist_imports_owner ON playlist_imports(user_id,created_at DESC);
+CREATE UNIQUE INDEX playlist_imports_active ON playlist_imports(user_id) WHERE status IN ('queued','running');
+CREATE TABLE playlist_import_entries(run_id TEXT NOT NULL REFERENCES playlist_imports(id) ON DELETE CASCADE,position INTEGER NOT NULL,json TEXT NOT NULL,status TEXT NOT NULL,PRIMARY KEY(run_id,position));
+CREATE TABLE friend_codes(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,code TEXT NOT NULL UNIQUE);
+CREATE TABLE friend_requests(sender TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,recipient TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at INTEGER NOT NULL,PRIMARY KEY(sender,recipient),CHECK(sender<>recipient));
+CREATE INDEX friend_requests_recipient ON friend_requests(recipient,created_at DESC);
+CREATE TABLE friendships(a TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,b TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(a,b),CHECK(a<b));
+CREATE INDEX friendships_b ON friendships(b,a);
+CREATE TABLE social_preferences(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,show_online INTEGER NOT NULL DEFAULT 0,show_track INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE social_groups(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL);
+CREATE INDEX social_groups_owner ON social_groups(owner_id);
+CREATE TABLE group_members(group_id TEXT NOT NULL REFERENCES social_groups(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(group_id,user_id));
+CREATE INDEX group_members_user ON group_members(user_id,group_id);
+CREATE TABLE shared_playlists(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,playlist_id TEXT NOT NULL,UNIQUE(owner_id,playlist_id));
+CREATE TABLE playlist_grants(share_id TEXT NOT NULL REFERENCES shared_playlists(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,permission TEXT NOT NULL CHECK(permission IN ('viewer','editor')),PRIMARY KEY(share_id,user_id));
+CREATE INDEX playlist_grants_user ON playlist_grants(user_id,share_id);
+CREATE TABLE playlist_group_grants(share_id TEXT NOT NULL REFERENCES shared_playlists(id) ON DELETE CASCADE,group_id TEXT NOT NULL REFERENCES social_groups(id) ON DELETE CASCADE,permission TEXT NOT NULL CHECK(permission IN ('viewer','editor')),PRIMARY KEY(share_id,group_id));
+CREATE INDEX playlist_group_grants_group ON playlist_group_grants(group_id,share_id);
+CREATE TABLE jam_rooms(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,host_id TEXT REFERENCES users(id) ON DELETE SET NULL,json TEXT NOT NULL,version INTEGER NOT NULL,updated_at INTEGER NOT NULL,guest_controls INTEGER NOT NULL DEFAULT 0,locked INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX jam_rooms_owner ON jam_rooms(owner_id);
+CREATE TABLE jam_members(room_id TEXT NOT NULL REFERENCES jam_rooms(id) ON DELETE CASCADE,user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,seen INTEGER NOT NULL,PRIMARY KEY(room_id,user_id));
+CREATE INDEX jam_members_seen ON jam_members(room_id,seen);
+CREATE TABLE jam_invites(hash TEXT PRIMARY KEY,room_id TEXT NOT NULL REFERENCES jam_rooms(id) ON DELETE CASCADE,expires_at INTEGER NOT NULL);
+CREATE INDEX jam_invites_room ON jam_invites(room_id);
+CREATE INDEX jam_invites_expiry ON jam_invites(expires_at);
+CREATE INDEX users_created ON users(created_at,id);
+CREATE INDEX otps_invite ON otps(invite_hash);
+CREATE INDEX oauth_states_owner ON oauth_states(user_id);
+CREATE INDEX jam_rooms_host ON jam_rooms(host_id);
+CREATE INDEX invites_phone ON invites(phone);
+CREATE INDEX invites_creator ON invites(created_by);
+CREATE INDEX invites_used_by ON invites(used_by);
+CREATE INDEX clients_user ON clients(user_id);
+INSERT INTO migrations(key,value) VALUES('social-import-admin-v1','1');`;
 export type Statement = { sql: string; params?: Value[]; mode?: "get" | "all" | "run" };
 /** SQLite is synchronous only inside this worker; request handlers await RPC, never block on SQL. */
 export class Database {
@@ -67,6 +103,10 @@ export class Database {
         if(db.prepare('SELECT count(*) AS n FROM users').get().n) {const target=workerData.file+'.before-playback-discord-'+require('node:crypto').randomUUID()+'.sqlite';db.prepare('VACUUM INTO ?').run(target);require('node:fs').chmodSync(target,0o600);}
         db.exec('BEGIN IMMEDIATE');try{db.exec(workerData.featureSchema);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
       }
+      if(!db.prepare("SELECT key FROM migrations WHERE key='social-import-admin-v1'").get()){
+        if(db.prepare('SELECT count(*) AS n FROM users').get().n) {const target=workerData.file+'.before-social-import-'+require('node:crypto').randomUUID()+'.sqlite';db.prepare('VACUUM INTO ?').run(target);require('node:fs').chmodSync(target,0o600);}
+        db.exec('BEGIN IMMEDIATE');try{db.exec(workerData.socialSchema);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
+      }
       const execute=({sql,params=[],mode='run'})=>{const q=db.prepare(sql);const value=q[mode](...params);
         return mode==='run'?{changes:Number(value.changes),lastInsertRowid:Number(value.lastInsertRowid)}:value;};
       parentPort.on('message',({id,operation,statements})=>{try{let result;
@@ -76,7 +116,7 @@ export class Database {
         else result=execute(statements[0]);parentPort.postMessage({id,result});
       }catch(e){parentPort.postMessage({id,error:'Database operation failed',detail:e.message});}});
       parentPort.postMessage({id:0,result:true});`;
-    this.worker = new Worker(source, { eval: true, workerData: { file, schema, featureSchema } });
+    this.worker = new Worker(source, { eval: true, workerData: { file, schema, featureSchema, socialSchema } });
     this.worker.on("message", ({ id, result, error, detail }) => {
       const job = this.pending.get(id); if (!job) return; this.pending.delete(id);
       if (error) job.reject(new Error(error, { cause: detail })); else job.resolve(result);

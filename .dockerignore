@@ -2,10 +2,6 @@
 **/node_modules
 **/dist
 **/dev-dist
-**/dist-native
-mobile/android
-mobile/release
-desktop/release
 server/data
 server/cache
 docs

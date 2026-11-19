@@ -15,17 +15,17 @@ below includes reproduction steps and captured evidence.
 | BUG-004 | Radio sometimes stalls advancing to next song or errors server unreachable | MITIGATED + INSTRUMENTED; incident verification pending | 2026-11-18 |
 | BUG-005 | yt-dlp wrapper needs whole-file fix beyond BUG-001 mitigation | RESOLVED — provisionally accepted by user; wrapper content retained | 2026-11-18 |
 | BUG-006 | Cloudflare Tunnel Optimization Findings for Codex Evaluation | Browser mitigation implemented; edge/device cause unverified | 2026-11-19 |
-| BUG-007 | Locked-screen track transition fails: preload handoff fired, media fetches timed out while hidden (first on-device trace) | STILL REPRODUCING on Samsung A07 per user (2026-11-19); fresh log supplied directly by Azan | 2026-11-19 |
-| BUG-008 | Remove desktop/ and mobile/ folders completely (Codex evaluates, Hermes executes) | Evaluation/runbook delivered; Hermes deletion pending | 2026-11-19 |
-| BUG-009 | Discord Rich Presence for playing state (desktop target being removed) | OAuth/service source delivered; vendor SDK/runtime acceptance pending | 2026-11-19 |
+| BUG-007 | Locked-screen next-track fetch failure on Samsung A07 | MITIGATION UPDATED — complete-byte preload + unlock recovery; device verification pending | 2026-11-19 |
+| BUG-008 | Retire desktop/mobile applications and native build wiring | RESOLVED in source — web/PWA only; Docker runtime acceptance pending | 2026-11-19 |
+| BUG-009 | Authenticated Discord Rich Presence | LIVE previously confirmed by user; revised stdout logging needs deployment regression | 2026-11-19 |
 | BUG-010 | Logging overhaul: stdout/docker-logs only, no in-app log files; Hermes self-diagnosis | RESOLVED in source — stdout diagnostics; audit/progress retained | 2026-11-19 |
 | BUG-011 | Phone number normalization (E.164, +60 default, idempotent backfill) | RESOLVED in source — canonical +60 and backed-up migration | 2026-11-19 |
 | BUG-012 | Codex deliverable: Cloudflare + tunnel optimization audit prompt for Hermes | DELIVERED — audit prompt with approval/rollback gates | 2026-11-19 |
-| BUG-013 | Dead active output tab permanently deadlocks device sync — no device can play; dead tabs stay "online" | FIXED in source (d2a0eb4) — deployed to prod 2026-11-19; user acceptance pending | 2026-11-19 |
-| BUG-014 | Discord presence sidecar never connected: missing CA trust store (BoringSSL TLS failure to gaming-sdk.com) | FIXED in source (979a934) — deployed to prod 2026-11-19; user acceptance confirmed | 2026-11-19 |
-| BUG-015 | YouTube playlist import by link (feature — Codex to implement) | OPEN — delegated to Codex for implementation | 2026-11-19 |
-| BUG-016 | Social layer: friends, shared playlists, live jam rooms, presence/who's-listening (feature — Codex to implement) | OPEN — delegated to Codex for implementation | 2026-11-19 |
-| BUG-017 | Admin operations: live view of what online users play; permanent hard-delete of users; admin phone edit with new-number OTP (feature — Codex to implement) | OPEN — delegated to Codex for implementation | 2026-11-19 |
+| BUG-013 | Dead output and device-sync transfer deadlocks | RESOLVED in source — inbound liveness, bounded transfers and explicit stale takeover | 2026-11-19 |
+| BUG-014 | Discord runtime missing system CA trust | RESOLVED — working Hermes CA fix retained; temporary SDK file logs removed | 2026-11-19 |
+| BUG-015 | Public YouTube playlist-link import | RESOLVED in source — progress, checkpoints and dedup; real playlist acceptance pending | 2026-11-19 |
+| BUG-016 | Friends, groups, shared playlists, jams and opt-in presence | IMPLEMENTED in source — authorization/coordination fixtures pass; real device acceptance pending | 2026-11-19 |
+| BUG-017 | Admin live playback, hard deletion and direct phone edit without OTP | RESOLVED in source — direct edit explicitly approved by user; demo acceptance pending | 2026-11-19 |
 ---
 
 > Current dispositions are in the index and the dated follow-up below. Original reports retain their historical wording/status as evidence. “Resolved in source” does not certify a live provider, tunnel or physical-device acceptance test.
@@ -735,3 +735,50 @@ Azan chose the FULL social layer:
 | Date | Actor | Change |
 |------|-------|--------|
 | 2026-11-19 | Hermes agent | Report created (OPEN). Implementation delegated to Codex. |
+
+
+---
+
+## 19 November 2026 — approved expanded source revision (Codex)
+
+Base: user-uploaded `79958c4d54b9173ce2d80182973c6dce80e208be`. The user answered the scope/behavior questions and explicitly approved building, including Codex execution of BUG-008. Historical reports above remain unchanged. Current dispositions are in the index.
+
+### BUG-007 — fresh trace and updated mitigation
+
+The supplied second Samsung diagnostic export records first-track playback, but no next-track preloaded handoff or playing event. On 19 November at approximately 18:01:06–18:01:09 MYT the next track failed with zero buffered bytes and media code 4 while hidden; both bounded retries ran and their probes failed at the network layer. Returning visible at 18:01:22 did not recover after the two-retry budget was exhausted. Media code 4 alone does not prove a codec defect in this trace.
+
+The player now downloads one complete upcoming audio body (16 MiB per-body cap, 25-second deadline) while the foreground connection is available and can hand that Blob to the current browser audio element. The existing spare-element fallback remains supported where appropriate. Queue/output/session changes abort/release stale work. After exhausted hidden retries, one fresh foreground recovery is permitted unless playback was deliberately paused. Diagnostics record complete/incomplete preparation and insufficient-buffer handoffs. Synthetic player and bounded-byte tests pass; Samsung A07 playlist/radio × Wi-Fi/data acceptance remains mandatory. Network partition/OS termination is not eliminated.
+
+Origin/tunnel/Access/WAF correlation remains pending for 17:58:30–18:01:30 MYT, particularly traces `edc97641-0600-4db6-abb7-5d90428a727f`, `dae5b687-5cfa-4729-a302-e0dab285c531`, `4bdeeb10-7440-4cfd-8d6c-edc6094d4bf8`, last successful queue request `req-1zf` and Ray `a5ce5f04bf81f518-SIN`. The user already supplied the diagnostic export; do not ask for the same file again.
+
+### BUG-008 — source retirement executed
+
+Removed the desktop/mobile/native directories, native-only types/build substitutions, Electron/Capacitor dependencies, installer scripts/workflow and Docker manifest references. Retained web/PWA icons, service worker, phone/TV browser layouts, optional SDK infrastructure and the intentional upstream remote streaming-configuration URL. pnpm 10.14.0 regenerated the lockfile from the retained versions: 810 → 436 package entries, no added package versions or direct dependency upgrades. This reduces repository/dependency/build scope; it is not evidence of a measured production playback or memory improvement. The source retirement is resolved; Docker image build and real PWA acceptance remain pending. See docs/PLATFORM-REMOVAL.md.
+
+### BUG-009/010/014 — reviewed working Discord fix
+
+The working Hermes system CA installation remains unchanged. The earlier deployed presence result was confirmed by the user. Removed temporary SetLogDir/verbose vendor file logging and retained bounded numeric SDK status/error/code fields through the service stdout allowlist. SDK stderr/provider text stays suppressed. The revised adapter still requires operator SDK compilation and a deployment regression check for real presence and absence of vendor-created files.
+
+### BUG-013 — bounded recovery with explicit stale takeover
+
+Preserved deadlock recovery goals while applying the user's selected policy: normal transfers require pause acknowledgement; after 45 seconds without inbound client activity, an explicit Take over playback action may replace the stale owner. A server SSE heartbeat or open listener no longer keeps a suspended client online. Transfers expire after 30 seconds, old epoch writes remain fenced, and offline device pruning is bounded. Fixtures cover stale outputs, half-open SSE, transfer retry, controls and output exclusivity. Unreachable buffered audio cannot be guaranteed silent remotely.
+
+### BUG-015 — implemented public playlist import
+
+Library now accepts supported HTTPS YouTube playlist/watch links and an optional owned destination. Public metadata uses the existing yt-dlp wrapper/process queue; per-item playable resolution uses public credentials only. Reports show live item status, bounded pages, skipped unavailable items and retryable failures. Checkpoints survive restart/cancellation; rerun deduplicates and appends missing tracks, retaining Musike edits. Initial successful imports retain source order; later retries append recovered items. Fixture coverage includes partial failures, ownership, progress and duplicate-free rerun. Real 50-video acceptance is pending. The older report's Takeout-only description was inaccurate: this repository has Google OAuth import but no Takeout parser.
+
+### BUG-016 — implemented social and cross-account jams
+
+Added friend codes/links, accepted requests, persistent owner-controlled groups, live viewer/editor playlist grants, optimistic edit revisions, explicit personal copies and independently opt-in online/track presence. Phones are not exposed through friend discovery. Grant/group revocation removes access to the original; explicit copies remain owned by recipients.
+
+Jam rooms use signed-in membership and hashed expiring/revocable invitations, bounded capacity/queues, versioned commands and the existing per-account output coordinator. Guests may add tracks; transport is host-only unless enabled. Host disappearance pauses and clears hosting for an explicit claim. Two real browser coordinator modules (synthetic media/transport) exercise cross-account queue updates, guest restrictions, drift correction and host loss while preserving one output/account. These fixtures are not proof of physical-device timing, autoplay or background acceptance.
+
+### BUG-017 — admin controls; user explicitly overrides OTP requirement
+
+Added paged admin live playback and permanent deletion with typed target UUID, self/last-admin guards, lifecycle cleanup and an audited transactional owned-data purge. Owned jams close rather than transfer ownership; sharing metadata cascades. Provider revocation is best effort, and operator backups follow existing retention.
+
+The user explicitly changed the phone-edit requirement: **an authenticated administrator may edit immediately without OTP confirmation**. Implemented Malaysian +60 normalization, collision rejection, affected challenge/unredeemed phone-invite invalidation, session/client revocation and output cleanup. User UUID and library ownership remain. The configured bootstrap phone cannot silently register a replacement account after bootstrap has completed. Original OTP-request wording above is historical and superseded by this decision.
+
+### Remaining acceptance and earlier items
+
+BUG-002's real failed input rerun remains pending; BUG-003 stays closed and BUG-005 remains provisionally accepted with wrapper content retained and executable permission restored. BUG-001/004/006 retain their existing mitigation/incident status. Exact automated results and environment limitations are in TEST-RESULTS.md. No production deployment, tunnel/WAF change, actual account deletion or operator configuration mutation occurred.

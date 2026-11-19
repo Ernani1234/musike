@@ -1,3 +1,15 @@
+# Current complete-source delivery — 19 November 2026
+
+Source ZIP: `Musike_Web_PWA_Production_20261119.zip`; baseline upload `79958c4d54b9173ce2d80182973c6dce80e208be`. Complete source replacements are included. `EXPANDED-FIXES.patch` is the clean patch against that upload and includes retired-file deletions. `EXPANDED-IMPACT.md` lists affected files/functions; `EXPANDED-DOCUMENTATION-SYNC.md` contains exact current markdown snippets; `EXPANDED-HANDOFF.md` gives installation, validation and remaining acceptance.
+
+`SOURCE-SHA256.json` is regenerated for the current tree, excluding itself and the newly generated patch to avoid recursion. Earlier patch files and manifest tables below are retained historical evidence and must not be reapplied after this revision. The current package excludes dependency directories, generated bundles, runtime data/caches, private vendor SDK files, credentials, .git and the raw diagnostic attachment.
+
+Use a clean target checkout/directory or apply the patch. Unzipping over an old tree does not remove retired files. Preserve existing operator environment/compose/runtime files. The source Dockerfile change is limited to retired package COPYs and their comment; no production configuration was changed.
+
+---
+
+## Historical manifests (their hashes describe earlier deliveries)
+
 # Targeted bugfix overlay manifest
 
 Base: uploaded fork main `da3f88384651cdf8ee487054a50b0effb277cb45`. Date: 19 November 2026.

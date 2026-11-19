@@ -1,3 +1,5 @@
+import { Modal } from "./Modal";
+import { useSession } from "../stores/session";
 import { useEffect, useState } from "react";
 import { useT } from "../i18n";
 import { accountRequest } from "../stores/session";
@@ -5,21 +7,26 @@ import { accountRequest } from "../stores/session";
 interface Settings { media: { cacheMb: number; lookahead: number; audioQuality: string; videoQuality: string; ytdlpArgs: string[] };
   otpEnabled: boolean; otpExpiry: number; otpCooldown: number; }
 interface User { id: string; phone: string; name: string; role: string; status: string; last_seen: number | null; }
-interface Ops { users: number; connectedUsers: number; cache: { bytes: number; budget: number }; clients: { id: string; name: string; ip: string; last_activity: number }[];
+interface Ops { playback: { userId: string; track?: { title: string; artist: string }; status?: string; device?: string }[]; users: number; connectedUsers: number; cache: { bytes: number; budget: number }; clients: { id: string; name: string; ip: string; last_activity: number }[];
   errors: { at: number; action: string; ip: string; level: string }[]; }
 const input = "h-11 w-full rounded-full bg-surface-1 px-4 text-sm ring-1 ring-line-strong";
 export default function AdminPanel() {
-  const t = useT(); const f = t.features;
+  const t = useT(); const f = t.features; const c = t.collaboration; const self = useSession(s => s.user?.id);
+  const [editingPhone, setEditingPhone] = useState<User | null>(null); const [nextPhone, setNextPhone] = useState("");
+  const [deleting, setDeleting] = useState<User | null>(null); const [confirmation, setConfirmation] = useState(""); const [busy, setBusy] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null); const [args, setArgs] = useState("[]");
+  const [userOffset, setUserOffset] = useState(0); const [clientOffset, setClientOffset] = useState(0);
   const [users, setUsers] = useState<User[]>([]); const [ops, setOps] = useState<Ops | null>(null);
   const [invite, setInvite] = useState(""); const [phone, setPhone] = useState(""); const [error, setError] = useState("");
   const load = async () => {
     try { const [settings, users, ops] = await Promise.all([accountRequest<Settings>("/api/admin/settings"),
-      accountRequest<{ users: User[] }>("/api/admin/users"), accountRequest<Ops>("/api/admin/ops")]);
+      accountRequest<{ users: User[] }>(`/api/admin/users?offset=${userOffset}`), accountRequest<Ops>(`/api/admin/ops?offset=${clientOffset}`)]);
       setSettings(settings); setArgs(JSON.stringify(settings.media.ytdlpArgs)); setUsers(users.users); setOps(ops);
     } catch (e) { setError((e as Error).message); }
   };
-  useEffect(() => { void load(); const timer = setInterval(() => void accountRequest<Ops>("/api/admin/ops").then(setOps).catch(() => {}), 5000); return () => clearInterval(timer); }, []);
+  useEffect(() => { void load(); }, []);
+  useEffect(() => { const timer = setInterval(() => void accountRequest<Ops>(`/api/admin/ops?offset=${clientOffset}`).then(setOps).catch(() => {}), 5000); return () => clearInterval(timer); }, [clientOffset]);
+  useEffect(() => { void accountRequest<{ users: User[] }>(`/api/admin/users?offset=${userOffset}`).then(r => setUsers(r.users)).catch(e => setError(e.message)); }, [userOffset]);
   const patchUser = async (id: string, body: unknown) => {
     try { await accountRequest(`/api/admin/users/${id}`, body, "PATCH"); await load(); } catch (e) { setError((e as Error).message); }
   };
@@ -46,17 +53,27 @@ export default function AdminPanel() {
       <label className="flex flex-col gap-2 text-sm">{f.phone}<input className={input} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
       <button className="button-secondary" type="button" onClick={() => void accountRequest<{ code: string }>("/api/admin/invites", { phone }).then((r) => setInvite(r.code)).catch((e) => setError(e.message))}>{f.inviteCreate}</button>
       {invite && <output className="break-all rounded-xl bg-surface-1 p-3 font-mono text-sm">{invite}</output>}
+      <div className="flex gap-2"><button type="button" className="button-secondary" disabled={!userOffset} onClick={() => setUserOffset(Math.max(0, userOffset - 200))}>{c.previous}</button><button type="button" className="button-secondary" disabled={users.length < 200} onClick={() => setUserOffset(userOffset + 200)}>{c.next}</button></div>
       {users.map((user) => <div key={user.id} className="flex flex-col gap-2 rounded-xl bg-surface-1 p-3">
         <p className="text-sm">{user.name ? `${user.name} · ${user.phone}` : user.phone}</p><p className="text-xs text-fg-2">{f.lastSeen}: {user.last_seen ? new Date(user.last_seen).toLocaleString() : "—"}</p>
         <label className="text-sm">{f.name}<input className={input} defaultValue={user.name} key={`${user.id}:${user.name}`} onBlur={(e) => { if (e.target.value !== user.name) void patchUser(user.id, { name: e.target.value }); }} /></label>
         <label className="text-sm">{f.role}<select className={input} value={user.role} onChange={(e) => void patchUser(user.id, { role: e.target.value })}><option value="user">{f.user}</option><option value="admin">{f.administrator}</option></select></label>
         <label className="text-sm">{f.status}<select className={input} value={user.status} onChange={(e) => void patchUser(user.id, { status: e.target.value })}><option value="approved">{f.approved}</option><option value="pending">{f.pending}</option><option value="disabled">{f.disabled}</option></select></label>
+        <div className="flex flex-wrap gap-2"><button type="button" className="button-secondary" onClick={() => { setEditingPhone(user); setNextPhone(user.phone); }}>{c.phoneEdit}</button><button type="button" className="button-secondary" disabled={user.id === self} onClick={() => { setDeleting(user); setConfirmation(""); }}>{c.deleteUser}</button></div>
       </div>)}
     </section>
     {ops && <section className="flex flex-col gap-3"><h4 className="font-medium">{f.ops}</h4><p className="text-sm">{f.users}: {ops.users} · {f.connected}: {ops.connectedUsers} / {ops.clients.length}</p>
       <p className="font-mono text-sm">{f.cacheBudget}: {(ops.cache.bytes / 1048576).toFixed(1)} / {(ops.cache.budget / 1048576).toFixed(0)} MB</p>
       {ops.clients.map((client) => <p key={client.id} className="break-all text-xs">{client.name} · {f.ip}: {client.ip} · {new Date(client.last_activity).toLocaleTimeString()}</p>)}
+      <div className="flex gap-2"><button type="button" className="button-secondary" disabled={!clientOffset} onClick={() => setClientOffset(Math.max(0, clientOffset - 100))}>{c.previous}</button><button type="button" className="button-secondary" disabled={ops.clients.length < 100} onClick={() => setClientOffset(clientOffset + 100)}>{c.next}</button></div>
+      <h5 className="text-sm font-medium">{c.livePlayback}</h5><ul className="flex flex-col gap-2 text-sm">{ops.playback?.map(p => <li key={p.userId} className="rounded-xl bg-surface-1 p-3"><span>{users.find(u => u.id === p.userId)?.name || p.userId}</span><p className="text-fg-2">{p.track ? `${p.track.title} — ${p.track.artist}` : c.nothingPlaying} · {p.status || "—"} · {c.device}: {p.device || "—"}</p></li>)}</ul>
       <h5 className="text-sm font-medium">{f.errors}</h5><ul className="scroll-area max-h-48 overflow-auto text-xs text-fg-2">{ops.errors.map((event, i) => <li key={i}>{new Date(event.at).toLocaleTimeString()} · {event.action} · {event.ip}</li>)}</ul>
     </section>}
+    {editingPhone && <Modal open title={c.phoneEdit} onClose={() => { if (!busy) setEditingPhone(null); }}><form className="flex flex-col gap-3 p-4" onSubmit={async e => { e.preventDefault(); setBusy(true); setError(""); try { await accountRequest(`/api/admin/users/${editingPhone.id}`, { phone: nextPhone }, "PATCH"); setEditingPhone(null); await load(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}>
+      <p className="text-sm text-fg-2">{c.phoneEditHelp}</p><label className="flex flex-col gap-2 text-sm">{f.phone}<input type="tel" className={input} value={nextPhone} onChange={e => setNextPhone(e.target.value)} required /></label>{error && <p role="alert" className="text-sm text-danger">{error}</p>}<button type="submit" className="button-secondary" disabled={busy}>{f.save}</button>
+    </form></Modal>}
+    {deleting && <Modal open title={c.deleteUser} onClose={() => { if (!busy) setDeleting(null); }}><form className="flex flex-col gap-3 p-4" onSubmit={async e => { e.preventDefault(); setBusy(true); setError(""); try { await accountRequest(`/api/admin/users/${deleting.id}`, { confirmation }, "DELETE"); setDeleting(null); await load(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}>
+      <p className="text-sm text-fg-2">{c.deleteHelp}</p><code className="break-all text-sm">{deleting.id}</code><label className="flex flex-col gap-2 text-sm">{c.confirmDelete}<input className={input} value={confirmation} onChange={e => setConfirmation(e.target.value)} autoComplete="off" /></label>{error && <p role="alert" className="text-sm text-danger">{error}</p>}<button type="submit" className="button-secondary" disabled={busy || confirmation !== deleting.id}>{c.confirmDelete}</button>
+    </form></Modal>}
   </div>;
 }

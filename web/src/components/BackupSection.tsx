@@ -7,7 +7,7 @@ import { toast } from "../stores/ui";
 
 type Mode = "merge" | "replace";
 
-/** Export the library to a file and import it in any other Musike (web, desktop, another computer). */
+/** Export the library to a file and import it in another Musike browser or PWA session. */
 export function BackupSection() {
   const input = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<{ backup: Backup; file: string } | null>(null);

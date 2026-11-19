@@ -1,7 +1,7 @@
 /**
  * Android TV mode: 10-foot UI plus D-pad spatial navigation.
  *
- * Turned on automatically when the Android app runs on a TV (web/src/native/android.ts), by VITE_TV=1 at build
+ * Turned on by VITE_TV=1 at build
  * time, or by opening the app with ?tv=1 (handy for trying it in a browser). Everywhere else it stays off.
  *
  * Rules: geometry in document space (rails stay navigable when an item is scrolled out), candidates

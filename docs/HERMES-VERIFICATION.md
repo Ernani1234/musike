@@ -1,3 +1,9 @@
+# Current expanded revision notice
+
+Use the current handoff, ARCHITECTURE.md section 7, DEPLOYMENT-NOTES.md header and TEST-RESULTS.md before the historical steps below. BUG-008 source retirement is executed in this package; no separate deletion commit is needed. Native/Electron build commands no longer apply. Direct admin phone edits deliberately require no OTP. Stale device takeover is explicit, while normal transfers remain pause-confirmed. Hermes's working Discord certificate fix is retained; revised logging still needs service regression acceptance. No production promotion is performed by this delivery.
+
+---
+
 # Hermes handoff — 19 November 2026 production revision
 
 ## Package and responsibilities

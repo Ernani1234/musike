@@ -4,7 +4,7 @@
 
 This reference describes the four-phase fork plus the approved 19 November 2026 BUG-002–006 source fixes, based on uploaded fork main `da3f88384651cdf8ee487054a50b0effb277cb45`. It retains the earlier audit/fallback/deployment work. It does not describe the current upstream GitHub branch. Read DEPLOYMENT-NOTES.md and ACCEPTANCE-CHECKLIST.md before enabling features on demo.
 
-Musike is a personal music player using YouTube/YouTube Music discovery and playback. The workspace contains a Fastify server, a React web application/PWA, an Electron desktop wrapper, and Capacitor Android/iOS applications. The actual backend is Fastify/TypeScript, not FastAPI. Auth-enabled deployments use SQLite in a dedicated worker; auth-off and standalone-native libraries remain JSON.
+Musike is a personal music player using YouTube/YouTube Music discovery and playback. The supported workspace contains a Fastify server, a React web application/PWA and optional server-side Discord adapter. BUG-008 retires Electron/Capacitor targets. The actual backend is Fastify/TypeScript, not FastAPI. Auth-enabled deployments use SQLite in a dedicated worker; auth-off libraries remain JSON.
 
 | Layer | Declared technology |
 | --- | --- |
@@ -12,155 +12,34 @@ Musike is a personal music player using YouTube/YouTube Music discovery and play
 | Server | Fastify 5.12.5, @fastify/static 10.1.6, youtubei.js 18.1.0 |
 | Web | React/React DOM 19.3.0, React Router 8.4.0, Zustand 5.0.15 |
 | Styling/build | Tailwind CSS 4.3.3, Vite 8.3.4, Motion 14.1.0, Phosphor icons, Geist fonts |
-| Desktop | Electron 44.7.0, electron-builder 26.15.3, esbuild bundles |
-| Mobile | Capacitor 8.5.3; Android Java and iOS Swift bridges |
 | Media tools | yt-dlp resolves/downloads; Deno supports its JS challenges; FFmpeg merges HD video |
 | Persistence | Auth off: shared JSON. Auth on: SQLite WAL worker, per-user JSON library rows, users/sessions/settings/import metadata. Device-local preferences and per-user playback state |
 
 Interaction boundaries:
 
-- Web/desktop views call the `api` facade in `web/src/lib/api.ts`; it implements `MusikeApi` from `apiTypes.ts`.
+- Web/PWA views call the `api` facade in `web/src/lib/api.ts`; it implements `MusikeApi` from `apiTypes.ts`.
 - `server/src/app.ts` validates HTTP inputs and wires routes to library, discovery, streaming, and system modules.
-- Platform-independent `library.ts`, `browse.ts`, `search.ts`, `cache.ts`, `directAudio.ts`, `i18n.ts`, `taskQueue.ts`, and `types.ts` are also reachable from the native build. Keep Node-only storage/process work outside those shared modules.
-- Vite native mode replaces the HTTP facade, server configuration, and yt-dlp module with native implementations/shims. Standalone mobile does not run a Fastify server.
-- An optional `MUSIKE_SERVER_URL` makes the mobile WebView load a hosted instance instead of bundled standalone assets.
+- Platform-independent `library.ts`, `browse.ts`, `search.ts`, `cache.ts`, `directAudio.ts`, `i18n.ts`, `taskQueue.ts`, and `types.ts` may be reached by browser code. Keep Node-only storage/process work outside those shared modules.
 - `AUTH_ENABLED` is off unless exactly true: legacy HTTP/shared-library behavior remains. When on, a hard API/login wall scopes every library operation to the authenticated user; instance settings/tool actions are admin-only. Invite approval precedes account creation. SQLite and cached library snapshots assume one owning application process; do not scale replicas over the same data directory.
 - Keep the existing full-library API for backups. The new paginated track endpoint is additive; the current UI still loads the full library.
 
-Commands: `pnpm dev`, `pnpm build` (web only), `pnpm start`, `pnpm typecheck`, `pnpm test`, `pnpm --filter @musike/server bundle`, `pnpm --filter @musike/web build:native`, and `pnpm --filter musike-desktop bundle`.
+Commands: `pnpm dev`, `pnpm build` (web only), `pnpm start`, `pnpm typecheck`, `pnpm test`, `pnpm --filter @musike/server bundle`.
 
 Runtime defaults are port 4180, host `0.0.0.0`, server-relative `data/` and `cache/`, and `web/dist`. Environment overrides are `PORT`, `HOST`, `LOG_LEVEL`, `YTDLP_PATH`, `YTDLP_EXTRA_ARGS`, `MUSIKE_DATA_DIR`, `MUSIKE_CACHE_DIR`, `MUSIKE_CACHE_MAX_MB` (2048), `MUSIKE_WEB_DIST`, `MUSIKE_BIN_DIR`, `MUSIKE_LANG` (en), and `MUSIKE_LOCATION` (BR). Extra yt-dlp environment arguments are split on spaces, not parsed as shell quoting. Admin settings use a JSON argument array. New environment settings and defaults are exhaustively listed in DEPLOYMENT-NOTES.md; persisted media settings override the initial environment defaults when auth is on. Google import is hidden/unavailable without its credentials and HTTPS redirect configuration.
 
-The auth database requires Node 22.13+ for node:sqlite without the older flag. Docker builds target Node 22, serve `/app/web`, and persist `/data` and `/cache`. Electron sets profile-specific data/cache/bin paths before importing server configuration and listens on loopback, preferring port 4280 with up to ten port attempts.
+The auth database requires Node 22.13+ for node:sqlite without the older flag. Docker builds target Node 22, serve `/app/web`, and persist `/data` and `/cache`.
 
 ## 2. Directory Tree & File Responsibilities
 
-Condensed source tree; dependency directories and native resource/build-system details are omitted. The audit added test coverage, bounded-work/cache helpers, frontend state/paging/persistence helpers, and the root reference/report files.
+Current source boundaries; generated and dependency directories are omitted. The audit added test coverage, bounded-work/cache helpers, frontend state/paging/persistence helpers, and the root reference/report files.
 
-    musike-main/
-    |-- package.json
-    |-- pnpm-workspace.yaml
-    |-- pnpm-lock.yaml
-    |-- README.md
-    |-- ARCHITECTURE.md
-    |-- AGENTS.md
-    |-- CHANGELOG.md
-    |-- DEPLOYMENT-NOTES.md
-    |-- DATABASE-DECISION.md
-    |-- IMPLEMENTATION-PLAN.md
-    |-- ACCEPTANCE-CHECKLIST.md
-    |-- TEST-RESULTS.md
-    |-- HERMES_FOUND_BUGS.md
-    |-- BUGFIX-IMPACT.md
-    |-- DOCUMENTATION-SYNC.md
-    |-- DEMO-VERIFICATION.md
-    |-- PERFORMANCE_AUDIT.md
-    |-- IMPLEMENTATION_SUMMARY.md
-    |-- Dockerfile
-    |-- docker-compose.yml
-    |-- .github/workflows/
-    |   |-- docker.yml
-    |   `-- release.yml
-    |-- server/
-    |   |-- package.json
-    |   |-- tsconfig.json
-    |   |-- scripts/bundle.mjs
-    |   |-- src/
-    |   |   |-- index.ts
-    |   |   |-- app.ts
-    |   |   |-- config.ts
-    |   |   |-- accountRoutes.ts
-    |   |   |-- accounts.ts
-    |   |   |-- adminRoutes.ts
-    |   |   |-- db.ts
-    |   |   |-- secret.ts
-    |   |   |-- proxy.ts
-    |   |   |-- promote.ts
-    |   |   |-- audioCache.ts
-    |   |   |-- cacheBudget.ts
-    |   |   |-- googleImport.ts
-    |   |   |-- googleSource.ts
-    |   |   |-- importMatching.ts
-    |   |   |-- playbackDiagnostics.ts
-    |   |   |-- library.ts
-    |   |   |-- libraryFile.ts
-    |   |   |-- search.ts
-    |   |   |-- browse.ts
-    |   |   |-- cache.ts
-    |   |   |-- taskQueue.ts
-    |   |   |-- process.ts
-    |   |   |-- range.ts
-    |   |   |-- directAudio.ts
-    |   |   |-- ytdlp.ts
-    |   |   |-- stream.ts
-    |   |   |-- system.ts
-    |   |   |-- tools.ts
-    |   |   |-- bootstrap.ts
-    |   |   |-- unzip.ts
-    |   |   |-- i18n.ts
-    |   |   `-- types.ts
-    |   `-- test/
-    |       |-- accounts.test.ts
-    |       |-- admin.test.ts
-    |       |-- audio-cache.test.ts
-    |       |-- google-import.test.ts
-    |       |-- import-matching.test.ts
-    |       |-- cold-audio.test.ts
-    |       |-- playback-diagnostics.test.ts
-    |       |-- player-lifecycle.test.ts
-    |       |-- resolve-cancellation.test.ts
-    |       |-- direct-client-cache.test.ts
-    |       |-- wrapper.test.ts
-    |       |-- playback-queue.test.ts
-    |       |-- library.test.ts
-    |       |-- cache.test.ts
-    |       |-- http.test.ts
-    |       |-- unzip.test.ts
-    |       |-- frontend-state.test.ts
-    |       |-- jobs.test.ts
-    |       |-- delivery.test.ts
-    |       |-- media-cache.test.ts
-    |       `-- system.test.ts
-    |-- web/
-    |   |-- index.html
-    |   |-- vite.config.ts
-    |   |-- tsconfig.json
-    |   |-- tsconfig.native.json
-    |   |-- public/
-    |   `-- src/
-    |       |-- main.tsx
-    |       |-- App.tsx
-    |       |-- styles.css
-    |       |-- components/
-    |       |-- views/
-    |       |-- hooks/
-    |       |-- lib/
-    |       |-- stores/
-    |       |-- player/player.ts
-    |       |-- i18n/
-    |       |-- native/
-    |       `-- tv/
-    |-- desktop/
-    |   |-- package.json
-    |   |-- tsconfig.json
-    |   |-- scripts/bundle.mjs
-    |   |-- build/
-    |   `-- src/
-    |       |-- main.mts
-    |       |-- preload.ts
-    |       |-- backup.ts
-    |       `-- splash.html
-    |-- mobile/
-    |   |-- package.json
-    |   |-- capacitor.config.ts
-    |   |-- streaming.json
-    |   |-- scripts/
-    |   |-- android/
-    |   `-- ios/
-    `-- docs/
-        |-- design-system.md
-        |-- ux-benchmark.md
-        `-- screenshots/
+| Current directory | Responsibility |
+| --- | --- |
+| `server/src/`, `server/test/`, `server/scripts/` | Backend domain/routes, worker persistence, regression fixtures and bundling |
+| `web/src/views/`, `components/`, `player/`, `lib/`, `stores/`, `hooks/`, `i18n/`, `tv/` | Browser/PWA UI, state, coordination, translations and browser TV support |
+| `web/public/` | PWA icons and assets |
+| `services/discord-presence/` | Optional authenticated SDK infrastructure |
+| `deploy/`, `docs/`, `.github/workflows/docker.yml` | Existing operator helpers, documentation and Docker publishing |
 
 | File/group | Responsibility and boundary |
 | --- | --- |
@@ -195,12 +74,12 @@ Condensed source tree; dependency directories and native resource/build-system d
 | Artwork.tsx, Cover.tsx, AlbumTiles.tsx, GenrePanel.tsx | Lazy/fallback artwork, collection mosaics and browse tiles |
 | IconButton.tsx, Page.tsx, Modal.tsx, Slider.tsx, Brand.tsx | Shared UI primitives and layout/branding |
 | Controls.tsx, PlayerBar.tsx, NowPlaying.tsx, Video.tsx | Playback controls, responsive player surfaces, shared video presentation/theater |
-| Rail.tsx, MobileChrome.tsx, TitleBar.tsx | Desktop rail, phone chrome, Electron title bar |
+| Rail.tsx, MobileChrome.tsx | Browser rail and phone chrome |
 | Dialogs.tsx, TrackMenu.tsx, SettingsDialog.tsx, CustomizeSection.tsx, BackupSection.tsx, Toasts.tsx | Dialogs, actions, settings, appearance, backup controls and notifications |
 | hooks/useRemote.ts, useMediaQuery.ts, useShortcuts.ts | Bounded session data memo/abort guard, viewport matching, keyboard controls |
 | hooks/useListPage.ts / useRouteScroll.ts | 100-row paging with session page memory; history scroll restoration after deferred route/data layout, cancelled on user input |
 | lib/api.ts, apiTypes.ts, types.ts | HTTP implementation, platform facade contract, frontend data types; some data types are duplicated from server modules |
-| lib/audio.ts, backup.ts, accent.ts, desktop.ts, format.ts | Audio abstraction including iOS AVPlayer bridge; portable backup/preferences; color generation; Electron bridge; formatting helpers |
+| lib/audio.ts, backup.ts, accent.ts, format.ts | Browser audio; portable backup/preferences; color generation; formatting helpers |
 | stores/library.ts / libraryState.ts | Browser dependency wiring and injectable library store; ordered requests with pending optimistic operations replayed over confirmed state |
 | lib/optimisticQueue.ts, sessionCache.ts, trackIds.ts, playerPersistence.ts | Ordered optimistic reconciliation; capacity/TTL session cache; weakly retained membership indexes; compatible cached playback serialization |
 | stores/ui.ts, appearance.ts, system.ts | Dialogs/theme/toasts; device appearance; tool status/update polling |
@@ -210,22 +89,17 @@ Condensed source tree; dependency directories and native resource/build-system d
 | components/AuthGate.tsx / stores/session.ts | Initial account bootstrap/hard login UI before lazy App mounts; OTP forms, presence/role updates and shared 401 signal |
 | components/AccountPanel.tsx / AdminPanel.tsx | Account/logout, bounded import report and opt-in Google actions; lazy admin settings/users/ops. Use existing tokens/primitives |
 | i18n/en.ts, pt.ts, index.ts | Typed English/Portuguese frontend messages and language store |
-| native/api.ts, storage.ts, streams.ts | In-device API facade, Capacitor JSON storage, platform audio resolution |
-| native/http.ts, android.ts, media.ts, ytplayer.ts, shims/ | Native transport, Android setup/TV detection, OS media controls, iOS resolver bridge and build substitutions |
 | tv/tvMode.ts / tv/tv.css | Spatial D-pad navigation and scoped television presentation |
-| desktop/src/* | Electron window/server lifecycle, IPC preload, update-time backups, localized startup progress UI |
-| mobile/android/.../android/*.java | MainActivity, MusikeDevicePlugin, MusikePlaybackPlugin and PlaybackService native integration |
-| mobile/ios/App/App/*.swift | App/scene lifecycle, WebView controller, MusikeYouTube resolver, MusikePlayback and MusikeAudio bridges |
-| Build scripts/workflows | Vite/esbuild outputs, Electron packages, APK/IPA builds, Docker publishing and draft GitHub releases |
+| Build scripts/workflows | Vite/esbuild web/server outputs and Docker publishing |
 
-Generated outputs include `web/dist`, `web/dist-native`, `server/dist/server.mjs`, `desktop/dist`, and release packages. They are not the source of truth.
+Generated outputs are `web/dist` and `server/dist/server.mjs`; they are not the source of truth.
 
 ## 3. Dependency & Wiring Map
 
 Backend flows:
 
-- index.ts or Electron main.mts -> startServer -> refreshTools + createApp -> Fastify listen.
-- Auth off: library routes -> legacy library.ts facade -> libraryFile.ts -> atomic library.json replacement. Standalone native uses its existing Capacitor storage adapter.
+- index.ts -> startServer -> refreshTools + createApp -> Fastify listen.
+- Auth off: library routes -> legacy library.ts facade -> libraryFile.ts -> atomic library.json replacement.
 - Auth on: accountRoutes resolves trusted client IP, validates same-origin write marker, authenticates/refreshes cookies and enforces API login. Library routes -> accounts.library(user.id) -> isolated createLibrary instance -> SQLite libraries row by user_id -> worker RPC. Roles/status are read from the DB on authenticated requests.
 - Startup -> Accounts.open -> backed-up/transactional shared-library migration. ADMIN_PHONE becomes admin only at its first successful bootstrap OTP verification; CLI can explicitly provision/promote an alternative admin.
 - OTP -> account + resolved-IP rate/cooldown locks -> hashed challenge -> one wasphere POST. Verify -> timing-safe HMAC comparison + expiry/attempt/invite/approval checks -> hashed secure session cookies. Logout/disable revoke sessions.
@@ -239,12 +113,11 @@ Backend flows:
 
 Frontend flows:
 
-- main.tsx -> AuthGate -> authenticated/auth-off lazy App -> lazy views/components -> Zustand stores/api facade. Hosted native shells load this same web origin. Standalone native mode bypasses the account bootstrap and retains its in-device backend.
+- main.tsx -> AuthGate -> authenticated/auth-off lazy App -> lazy views/components -> Zustand stores/api facade.
 - Collection/Library/Home -> stores/library.ts/libraryState.ts -> OptimisticQueue -> HTTP library/favorite/playlist/history routes.
 - Search/BatchSearch/Genre/Artist/Album/GenrePanel -> api discovery methods; useRemote supplies genre/artist/album memoization. Search has its own request effects.
-- player/player.ts -> api.playbackSettings/prefetch (including readyIds)/radio/videoFor + streamSource -> audio abstraction/video element. Queue/index/manual/optimistic edits and 30-second active heartbeats renew the warming window; radio extends before the configured tail threshold. Repeat-all wraps lookahead; repeat-one has none. Server depth is authoritative. Ready upcoming audio may buffer in a spare browser media element before handoff; native/iOS bridge behavior stays separate. Record plays -> library store -> history endpoint.
+- player/player.ts -> api.playbackSettings/prefetch (including readyIds)/radio/videoFor + streamSource -> audio abstraction/video element. Queue/index/manual/optimistic edits and 30-second active heartbeats renew the warming window; radio extends before the configured tail threshold. Repeat-all wraps lookahead; repeat-one has none. Server depth is authoritative. Ready upcoming audio may buffer in a spare browser media element before handoff; iOS keeps the single-element browser path. Record plays -> library store -> history endpoint.
 - SettingsDialog/BackupSection -> system store or lib/backup.ts -> ordered library store import + refresh -> system/library/import routes. Import is serialized with mutations so an older response cannot overwrite the restored library.
-- Native build swaps facade and Node-only modules at Vite resolution time; shared domain functions use nativeStorage/nativeFetch. iOS resolution/audio/media control also use Swift message bridges.
 
 All paths below are relative to the same HTTP origin. JSON facade requests send `x-musike-lang: en|pt-BR` and `x-musike-request: 1`; auth writes also require an allowed Origin when present. Authenticated responses use secure same-origin cookies. New timing headers are x-musike-request-id and x-musike-trace; media URLs carry a non-secret UUID trace query. JSON fetches handle redirects manually. Every /api response is no-store; media elements do not generally set this header. Known HttpError values are translated and returned as `{error, code?}`. Codes include tool_missing, maybe_outdated, bot_check, and server_busy; admission overload/shutdown returns 503/server_busy. Framework validation errors also use the shared handler.
 
@@ -276,10 +149,10 @@ All paths below are relative to the same HTTP origin. JSON facade requests send 
 | POST /api/presence | {clientId}; logged in with auth on | {ok:true,user}; heartbeat/last-seen; auth off {ok:true} |
 | GET /api/admin/settings | Admin | {media:{cacheMb,lookahead,audioQuality,videoQuality,ytdlpArgs},otpEnabled,otpExpiry,otpCooldown} |
 | PATCH /api/admin/settings | Admin; partial settings/media object | Validated complete settings, persisted and applied |
-| GET /api/admin/users | Admin | {users:[id,phone,name,role,status,last_seen]}; ordered, max 200 |
-| PATCH /api/admin/users/:id | Admin; {name?,role?,status?} | Updated user; last-admin guard; disable revokes sessions |
+| GET /api/admin/users | Admin | {users:[id,phone,name,role,status,last_seen]}; ordered, max 200 per offset page |
+| PATCH /api/admin/users/:id | Admin; {name?,role?,status?,phone?} | Updated user; last-admin guard; disable revokes sessions |
 | POST /api/admin/invites | Admin; {phone?} | {code,expiresAt}; hash stored, raw code returned once |
-| GET /api/admin/ops | Admin | {users,connectedUsers,clients,cache,events,errors}; 100 active clients/50 events/50 errors |
+| GET /api/admin/ops | Admin | {users,connectedUsers,clients,cache,events,errors}; 100 active clients per offset page/50 events/50 errors; full connected-user count |
 | POST /api/google/connect | Logged in, configured | {url}; Google authorization URL with state/PKCE |
 | GET /api/google/callback | {state,code} query plus originating user's cookie | Redirect /library?google=connected; consumes state and stores encrypted tokens |
 | GET /api/google/status | Logged in owner; after? integer 0..100000, runId? max 80 chars | {connected,autoSync,lastSync,runId,status,report,itemOffset,itemTotal}; after returns at most 100 new items, cursor belongs only to that owner; never tokens |
@@ -311,11 +184,9 @@ HTML/asset and route wiring:
 
 - web/index.html links `/favicon.svg`, `/apple-touch-icon.png`, mounts `#root`, and imports `/src/main.tsx`.
 - main.tsx imports Geist fonts, styles.css and tv/tv.css. TV selectors activate only under html[data-tv="1"], although the stylesheet is imported for all builds.
-- Vite generates fingerprinted assets and the PWA manifest/service worker. The PWA caches artwork (600 entries, 30 days), not API responses or streams. Desktop and native modes avoid service-worker registration/use.
+- Vite generates fingerprinted assets and the PWA manifest/service worker. The PWA caches artwork (600 entries, 30 days), not API responses or streams.
 - Vite dev/preview proxy `/api` to `http://127.0.0.1:4180`. Production @fastify/static serves config.webDist when it exists; fingerprinted assets under assets/ cache for one year with immutable, while other files use no-cache. Unknown GET paths outside `/api/` fall back to index.html; API 404 responses remain JSON.
 - App routes are `/`, `/search`, `/search/list`, `/search/genre/:id`, `/search/artist/:id`, `/search/album/:id`, `/library`, `/favorites`, `/history`, `/playlist/:id`; unmatched frontend paths render Home. lib/routes.ts redirects legacy Portuguese paths/query names/hash. Phone Now Playing uses `#now-playing`.
-- Electron loads splash.html, then the local HTTP origin. preload.ts exposes theme/language/retry IPC. Desktop builds copy the splash and icon beside the bundled main/preload scripts.
-- Capacitor uses web/dist-native, unless a server URL is configured. Native source changes require the platform build/sync process.
 
 ## 4. Database Schema (SQLite)
 
@@ -358,7 +229,7 @@ Libraries remain JSON snapshots per user rather than normalized song tables:
 | Track | id:string YouTube ID; title/artist:string; album?:string; duration:number seconds; thumb/art:string; kind:song or video; optional origin |
 | Origin | provider:youtube-music; sourceId:string; kind:playlist/album/like/history |
 
-Each `createLibrary` instance coalesces initial loading and serializes/coalesces snapshot writes. Auth-owned instances read/write only their user_id row. Legacy file storage still uses library.json.tmp -> library.json; native storage remains Capacitor Directory.Data/library.json with library.tmp.json recovery. The domain does not roll back in-memory mutations after a storage-write failure, and cached snapshots require one owning app process. SQLite indexes do not make title/artist filtering inside JSON indexed.
+Each `createLibrary` instance coalesces initial loading and serializes/coalesces snapshot writes. Auth-owned instances read/write only their user_id row. Legacy file storage still uses library.json.tmp -> library.json. The domain does not roll back in-memory mutations after a storage-write failure, and cached snapshots require one owning app process. SQLite indexes do not make title/artist filtering inside JSON indexed.
 
 Track sanitizer caps title/artist/album at 300 characters, permits HTTPS artwork up to 500 characters, validates IDs and rounds nonnegative duration. Names cap at 80 characters, history at 60 tracks. Backup cleaning caps 1,000 incoming playlists and 5,000 tracks per incoming list. Merge matches ID then case-insensitive name; playlist mutations deduplicate track IDs. Google album markers survive backup cleaning; Google import mappings are per owner/source/kind, loaded in one query per run and persisted in batches after durable library writes. Ordered duplicate occurrences are not representable in the existing playlist model.
 
@@ -375,12 +246,12 @@ Cached audio is <videoId>.audio.bin plus .audio.json MIME/size metadata; HD is <
 - Detailed playback diagnostics are enabled only by MUSIKE_PLAYBACK_DIAGNOSTICS=true. A 200-event browser memory ring and a 200-entry/60-second owner-scoped server failure cache are bounded. Timing logs allowlist scalar fields; do not log URLs/headers/provider errors/secrets. Client events are diagnostic claims, not security audit evidence.
 - Queue warming must use the server depth, updated optimistic/manual queue order, repeat behavior and stale-request revisions. Radio is extended proactively; cancelled/stale completions cannot overwrite a replacement queue.
 - Import UI refreshes the library on completion, uses existing paging for 100 report rows and origin labels, exposes running counts/current/completed activity and needs-review suggestions. It polls active runs every second, fetching at most 100 report deltas; backlog catch-up uses 250ms polling. Unavailable categories remain explicit; private-provider support is not a guaranteed public API contract.
-- Use the existing React function components and JSX for the application. Keep DOM changes inside React-owned subtrees declarative. The standalone Electron splash uses componentRow(), cached DOM references, textContent, and local progress-width updates.
+- Use the existing React function components and JSX for the application. Keep DOM changes inside React-owned subtrees declarative.
 - Narrow Zustand selectors keep playback position updates out of unrelated views. TrackRow is memoized, receives a stable shared play callback and a favorite boolean, and subscribes to its own current/live state. Collection selects only its relevant playlist/track slice and actions; Home/Library also use field selectors. Selectable/control favorite checks reuse WeakMap-backed ID indexes.
 - TrackList and SelectableTrackList mount at most 100 rows per page; QueueList mounts the current row plus at most 100 upcoming rows. Previous/Next controls replace the visible page rather than accumulating DOM rows. Playback and select-all still use full collections. Collection pages retain page identity across favorite edits and back navigation. This is local pagination, not virtual scrolling or network paging.
 - useRemote caches up to 60 results for 30 minutes, keyed state prevents flashing a prior entity on key changes, and retry invalidates its memo entry. Keys include entity/language where callers supply them. Aborted effects cannot publish late completions. Its loader is keyed by key/attempt rather than function identity; change the key when the requested resource changes.
 - Shared server cached() stores up to 200 promises per memo, expires entries on access, coalesces same-key work while retained, and removes failures. Browse TTLs are 6 hours for genres, 30 minutes for genre/artist state, and 60 minutes for albums. Video matching caches metadata-keyed results for 6 hours. Resolved server media URLs are capped at 200 entries and checked against expiration. Media subprocesses run at most three at once with 32 waiting jobs and a 30-second queue deadline. HD work additionally permits two active and eight waiting jobs. Captured process output is limited to 16 MiB combined, with 45-second resolve/search and ten-minute download execution limits. Termination escalates after two seconds; POSIX children use process groups, while Windows kills the direct child. Shutdown rejects queued media work and terminates active media processes. These limits do not bound every upstream network request.
-- SessionCache bounds browser/native retention: clip mappings 200 entries/6h, genre continuation 30 entries/30min, remote page results 60 entries/30min, local list-page memory 60 entries/30min, native resolved audio 200 entries/3h, scroll history 120 entries. Native audio also checks the URL expiration before reuse.
+- SessionCache bounds browser retention: clip mappings 200 entries/6h, genre continuation 30 entries/30min, remote page results 60 entries/30min, local list-page memory 60 entries/30min, scroll history 120 entries.
 - React.lazy/Suspense defer all eight route views. useRouteScroll observes route/data readiness and size changes for up to five seconds when restoring history; wheel/touch/pointer/key input cancels restoration. Hash-only Now Playing toggles do not reset page scroll.
 - CSS source of truth is web/src/styles.css: dark defaults, light overrides, Tailwind @theme inline mappings, base rules and shared component classes. Appearance settings inject custom accent CSS through lib/accent.ts and stores/appearance.ts.
 
@@ -399,13 +270,13 @@ Cached audio is <videoId>.audio.bin plus .audio.json MIME/size metadata; HD is <
 - docs/design-system.md describes pill/circular controls, 10/14px artwork, 20px panels, tone-based surface depth, and responsive rail/player layouts. Some existing components use literal radii. Scope TV overrides to html[data-tv="1"]; do not turn them into global overrides.
 - The wide custom variant applies from 80rem, excluding compact rail/TV modes. The phone/desktop breakpoint is 768px. Modal.tsx documents layers: headers 10, chrome 20, floating video 30, sheet/drawer 40, modal/menu 50, toasts 60.
 - Preserve button semantics, translated accessible names, keyboard/TV navigation, artwork lazy decoding/fallbacks, safe-area spacing and reduced-motion behavior. Add frontend strings to en.ts and pt.ts (the new features group explicitly uses English fallback in pt.ts); server message keys also require both catalogs.
-- Treat server and native API implementations as one contract. Do not add Node imports to shared domain modules or bypass the native build substitutions when introducing platform work. The new HTTP-only paging endpoint has no facade/native method yet.
-- Validation is pnpm test plus pnpm typecheck and web/native/server/desktop bundle builds as relevant. Native installer/device playback checks require their platform tooling and are separate from TypeScript/build validation.
+- Keep browser-reachable modules free of Node imports. The additive HTTP track-paging endpoint has no facade method yet.
+- Validation is pnpm test, pnpm typecheck, web/PWA build and server bundle. Physical-device playback and production Docker acceptance are separate from source/build validation.
 
 
 The 19 November source package includes the explicitly approved deploy/ytdlp-wrap.sh replacement only. Other operator-owned deployment files remain unchanged. The wrapper retries classified transient metadata extraction at most two attempts by default; download/version/update commands pass through. No implicit success sleep exists; explicit legacy YTDLP_DELAY and an optional YTDLP_WRAP_SUCCESS_DELAY override remain operator controls. All new variables/bounds are in DEPLOYMENT-NOTES.md. BUG-004/006 production cause/physical-device acceptance remains pending in HERMES_FOUND_BUGS.md and DEMO-VERIFICATION.md.
 
-## 6. Approved production revision — BUG-007–012 and device sync (19 November 2026)
+## 6. Historical production revision (superseded where section 7 differs) — BUG-007–012 and device sync (19 November 2026)
 
 This section supersedes earlier descriptions where behavior changed. The user approved the evaluated plan before implementation. The default application remains Fastify/TypeScript + React/Zustand/Tailwind; no UI framework, CSS variable, inline style system, dependency version or existing operator environment/compose content changed. Native target deletion is an approved **Hermes follow-up**, documented in docs/PLATFORM-REMOVAL.md; until executed the legacy directories/build substitutions remain and are validated. The optional Discord native adapter is server infrastructure, not a desktop/mobile product.
 
@@ -469,3 +340,116 @@ Client telemetry adds fixed operation category, safe response requestId and nume
 The main server encrypts OAuth credentials with owner context discord:<UUID>; state verifier uses discord-state:<UUID>. At most one pending state/owner is retained; expired states are indexed/cleaned. A Discord identity cannot be linked to two Musike owners. Delivery is latest-state coalesced and single-flight per user, capped to 128 tracked users. Paused/nonplaying state clears activity; missing heartbeats clear within 60–75 seconds. The private sidecar requires a >=32-character shared bearer key; tokens cross only that private service boundary. Each SDK process receives an access token through stdin, not argv. Default 16/max64 isolated workers; private HTTP body 16 KiB, 64 connections, 60–70 second expiry. Vendor stdout is parsed into allowlisted state records; provider stderr is not forwarded. No native log directory is configured.
 
 Source OAuth/service tests use injected transports and a mock SDK process. The actual vendor SDK, headless Connect/Ready, application eligibility, Listening rendering and two-user profile acceptance were not available in this workspace and remain pending. No cloud-only all-platform presence guarantee is implied. See services/discord-presence/README.md and docs/HERMES-VERIFICATION.md.
+
+## 7. Current expanded production revision — 19 November 2026
+
+Base upload: `79958c4d54b9173ce2d80182973c6dce80e208be`. The user approved Codex execution of BUG-008 together with playback fixes, BUG-013/014 review, public playlist imports, social/jam features and admin operations. This section supersedes earlier platform, transfer, phone-edit and SDK logging descriptions. No deployment was performed.
+
+### Current platform and module boundaries
+
+Only `server` and `web` are workspace packages. Electron, Capacitor, native bridges, native TypeScript/Vite modes and native installer CI are removed. Docker copies only the two remaining manifests. The existing Docker publishing workflow, responsive/TV browser UI, PWA icons/service worker, auth-off JSON storage and upstream `mobile/streaming.json` configuration URL remain. That external URL is intentional and unrelated to the deleted local directory. No new dependency versions, CSS variables, inline style system or application innerHTML rendering were introduced.
+
+| Exact modules | Wiring / responsibility |
+| --- | --- |
+| `server/src/playlistImport.ts`, `playlistImportRoutes.ts`, `ytdlp.ts` | `createApp` creates/recover/closes the importer; validated public YouTube list IDs go through the existing bounded yt-dlp process queue; playable item validation uses public resolution without Google credentials |
+| `server/src/social.ts`, `socialRoutes.ts`, `library.ts` | Accepted friend relationships, group membership, grants, presence preferences and explicit copy/edit operations; `editPlaylist` checks an optimistic updatedAt revision |
+| `server/src/jams.ts`, `jamRoutes.ts`, `playbackSync.ts` | Cross-account canonical room queue/timeline above the private account/device layer; only the account's granted output receives a jam command; explicit output selection never silently transfers devices |
+| `server/src/accounts.ts`, `adminRoutes.ts`, `googleImport.ts`, `app.ts` | Phone update/delete orchestration, job cancellation, output cleanup and best-effort provider disconnection; final owned-data purge and audit insert are one worker transaction |
+| `web/src/lib/playbackPreload.ts`, `player/player.ts` | One pending complete audio body (16 MiB cap, 25-second deadline), Blob handoff into the current browser audio element, cancellation on queue/owner/session change, one additional foreground recovery after exhausted hidden retries |
+| `web/src/lib/playbackSync.ts`, `jams.ts` | Same-account SSE coordination and client pings; jam actions serialize through the server; foreground jam polling corrects drift without reloading matching audio |
+| `web/src/views/Social.tsx`, `SharedPlaylist.tsx`, `components/JamPanel.tsx`, `PlaylistImportDialog.tsx` | `/social`, `/shared/:id`, existing Modal/PageHeader/TrackList patterns; Library exposes imports and incoming shares; Rail/TabBar expose Social only for authenticated accounts |
+| `web/src/components/AdminPanel.tsx` | Existing admin panel adds paged users/clients, live playback, direct phone editing and typed permanent-deletion confirmation |
+| `services/discord-presence/worker.cpp`, `service.mjs` | No SetLogDir/vendor file logs; only allowlisted integer status/error/code plus existing booleans go to structured stdout. Keep runtime ca-certificates from the working Hermes fix |
+
+New frontend labels live in typed `collaboration` and `features` catalogs. Portuguese explicitly falls back to English for collaboration. No new DOM IDs are required. Jam/friend invitation codes are read from `/social?jam=…` and `/social?friend=…`; they grant no unauthenticated API access and are not logged by application request serialization.
+
+### Behavior, bounds and ownership
+
+- Device freshness requires an inbound client read/ping/snapshot within 45 seconds. Server SSE writes and open listeners do not refresh it. Transfers expire after 30 seconds; inactive devices are pruned after 180 seconds when disconnected. A stale active owner remains fenced until an explicit claim with `takeover:true`. Old epoch writes are rejected. An unreachable device's buffered audio cannot be remotely guaranteed silent.
+- The browser keeps complete next-track bytes outside advisory media preload. It never stores protected media in the service worker. A consumed Blob may remain active while the next body downloads; each body is capped at 16 MiB. Session loss/output suspension clears retained URLs and requests. iOS keeps its existing single-element browser path. Physical background acceptance remains pending.
+- Playlist imports: two active workers, twenty waiting, one active run per owner, at most twenty retained runs per owner, at most 5,000 items per run, 100 report rows per page. `MUSIKE_IMPORT_MAX_ITEMS` defaults to 1,000 for this importer and clamps to 1..5,000 (Google import retains its own existing bounds). Metadata extraction has a 60-second deadline and existing 16-MiB process-output cap; each playable-item resolution has a 30-second cancellation deadline. Import failures retain item checkpoints. Re-import deduplicates and appends missing IDs while preserving Musike edits. Failed items append when retried; the importer does not mirror source deletions/reordering. Original successful new imports retain source order. Unavailable/private items are skipped, transient failures remain retryable. The repository has no Takeout upload/parser; historical BUG-015 Takeout wording is inaccurate.
+- Friends: codes, accepted requests, at most 200 friends and 100 outstanding requests per account. No phone-number search. Presence online/current-track preferences default off and are independent; current-track presence requires live playing output. Admin visibility is independent.
+- Groups: owner-controlled, at most 50 memberships per account and 200 members per group; only accepted friends may be added. Leaving/removal revokes group-derived access. Shared playlists: at most 200 owner shares, viewer default, editor opt-in, current grants/membership checked on every read/edit. Authorized access resolves the stored owner before reading that owner's library; private library APIs still never accept arbitrary owner IDs. Explicit copied playlists belong to the recipient and survive revocation. Editor saves reject stale revisions.
+- Jams: at most 128 rooms, one membership per account, 500 tracks per queue. Capacity defaults to 10 accounts and is configurable with `MUSIKE_JAM_CAPACITY` clamped to 2..50. Invitations are hashed at rest, expire in 30 minutes and rotate/revoke explicitly. Join requires an existing approved account. Owner/host may lock entry, remove guests or revoke invitations. Everyone may add tracks; host controls transport unless guest controls are enabled. Room commands require the current version. State polling runs once per second for the foreground output, every five seconds for foreground mirrors, and every ten seconds while hidden or outside a jam, with one in flight. A 45-second missing host/output pauses the room and clears hosting; claiming is explicit. Restart pauses rooms and clears hosts. Alignment targets approximately one second in foreground with stable connectivity; background timers/autoplay/network limits are not eliminated.
+- New jam routes are limited to 240 requests per minute per user with bounded active buckets. Shared playlist lists, friends, requests, groups, report rows, members and admin results are bounded. SQLite stays inside the existing dedicated worker with parameterized RPC.
+- Admin phone updates require no OTP by explicit user decision. Normalize to Malaysian +60, reject collisions, invalidate pending OTPs and unredeemed phone-bound invites for old/new numbers, revoke sessions/clients and clear output coordination. UUID, libraries and ownership remain. A configured bootstrap number is not a permanent registration bypass after bootstrap completes.
+- Hard delete requires typed target UUID, refuses self/last-admin deletion, cancels work, pauses/closes owned jams, clears runtime output/provider state, then transactionally deletes target identity, phone challenges/invites and cascading owned data with an audit record. Provider revocation is best effort outside SQLite; existing operator backups retain their normal policy. Audit evidence contains IDs/actions/IP, not phone/token/provider text.
+
+### Added/extended API contracts
+
+All new social/import/jam APIs require authenticated accounts and use existing same-origin cookies and write-origin/CSRF checks. They return 401 when accounts are unavailable. Responses remain no-store. Limits/errors use normal `{error}` responses.
+
+| Method / path | Input / result |
+| --- | --- |
+| POST /api/playlist-imports | `{url,destination?}` → `{id}`; owner destination only; list/watch HTTPS YouTube URL accepted |
+| GET /api/playlist-imports | Latest owned report or null |
+| GET /api/playlist-imports/:id | `offset=0..5000` → owned summary and at most 100 item rows |
+| POST /api/playlist-imports/:id/resume or /cancel | Retry failed/pending checkpoints or cancel owned work |
+| GET /api/social | Incoming-share offset page (200), hasMore; own code/preferences, accepted friends and opt-in presence, requests, groups, owned/incoming shares |
+| POST /api/social/friends | `{code}` → request |
+| POST /api/social/requests/:id | Sender ID, `{accept:boolean}`; recipient only |
+| DELETE /api/social/friends/:id | Remove friendship/request and direct/group-derived access between the two accounts |
+| PATCH /api/social/preferences | `{online:boolean,track:boolean}` |
+| POST /api/social/groups | `{name}` → `{id}` |
+| GET /api/social/groups/:id | Member-visible group and bounded names/IDs |
+| PATCH /api/social/groups/:id | Owner: `{name?}`, `{member,remove?}` or `{delete:true}`; member may remove self |
+| POST /api/social/shares | `{playlist,user or group,permission?:viewer/editor,revoke?}` → share ID |
+| GET /api/shared-playlists/:id | Authorized live playlist, owner name/ID and permission |
+| PATCH /api/shared-playlists/:id | Editor/owner `{revision,name,tracks}`; 409 on concurrent edit |
+| POST /api/shared-playlists/:id/copy | Authorized explicit personal copy |
+| DELETE /api/shared-playlists/:id | Owner revokes all grants by deleting share |
+| GET /api/jams | Own current room or null, also supplies inbound heartbeat |
+| POST /api/jams | Create room; leave existing membership first |
+| POST /api/jams/join | `{code}`; approved user, valid invitation, unlocked/capacity checks |
+| GET /api/jams/:id | Member-only state/version/serverNow, host reconciliation and heartbeat |
+| POST /api/jams/:id/invite | Owner/host creates/rotates `{code,expiresAt}` |
+| POST /api/jams/:id/output | Member reapplies canonical state to their account's granted output |
+| POST /api/jams/:id/leave or /claim | Leave gracefully or explicitly claim vacant hosting |
+| PATCH /api/jams/:id | Owner/host `{guestControls?,locked?,revokeInvites?,remove?}` |
+| POST /api/jams/:id/commands | `{version,action,args}`; validated player commands and host/guest permission checks |
+| POST /api/playback/sync | Adds `{type:ping}` and explicit `{type:claim,takeover:true}`; views add takeoverAvailable; jam/resume commands remain server-issued |
+| PATCH /api/admin/users/:id | Adds `phone`; no OTP flow; direct admin validation/revocation |
+| DELETE /api/admin/users/:id | `{confirmation:targetUUID}` → `{ok:true}`; guarded transactional purge |
+| GET /api/admin/users | Adds offset, 200 rows per page |
+| GET /api/admin/ops | Adds offset, 100 clients per page and playback entries; connectedUsers counts all live users |
+
+### Added migration and exact DDL
+
+`social-import-admin-v1` runs after the existing playback/Discord migration. Existing nonempty databases receive a consistent worker `VACUUM INTO` snapshot with mode 0600 before `BEGIN IMMEDIATE`; DDL plus marker commit together. Reopening skips the marker. Foreign-key cascades deliberately close owner-created groups, shares and jam rooms rather than silently reassigning ownership. Audit actor/target fields remain historical IDs without foreign keys.
+
+```sql
+CREATE TABLE playlist_imports(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,source_id TEXT NOT NULL,destination_id TEXT,status TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,summary TEXT NOT NULL);
+CREATE INDEX playlist_imports_owner ON playlist_imports(user_id,created_at DESC);
+CREATE UNIQUE INDEX playlist_imports_active ON playlist_imports(user_id) WHERE status IN ('queued','running');
+CREATE TABLE playlist_import_entries(run_id TEXT NOT NULL REFERENCES playlist_imports(id) ON DELETE CASCADE,position INTEGER NOT NULL,json TEXT NOT NULL,status TEXT NOT NULL,PRIMARY KEY(run_id,position));
+CREATE TABLE friend_codes(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,code TEXT NOT NULL UNIQUE);
+CREATE TABLE friend_requests(sender TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,recipient TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at INTEGER NOT NULL,PRIMARY KEY(sender,recipient),CHECK(sender<>recipient));
+CREATE INDEX friend_requests_recipient ON friend_requests(recipient,created_at DESC);
+CREATE TABLE friendships(a TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,b TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(a,b),CHECK(a<b));
+CREATE INDEX friendships_b ON friendships(b,a);
+CREATE TABLE social_preferences(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,show_online INTEGER NOT NULL DEFAULT 0,show_track INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE social_groups(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL);
+CREATE INDEX social_groups_owner ON social_groups(owner_id);
+CREATE TABLE group_members(group_id TEXT NOT NULL REFERENCES social_groups(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(group_id,user_id));
+CREATE INDEX group_members_user ON group_members(user_id,group_id);
+CREATE TABLE shared_playlists(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,playlist_id TEXT NOT NULL,UNIQUE(owner_id,playlist_id));
+CREATE TABLE playlist_grants(share_id TEXT NOT NULL REFERENCES shared_playlists(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,permission TEXT NOT NULL CHECK(permission IN ('viewer','editor')),PRIMARY KEY(share_id,user_id));
+CREATE INDEX playlist_grants_user ON playlist_grants(user_id,share_id);
+CREATE TABLE playlist_group_grants(share_id TEXT NOT NULL REFERENCES shared_playlists(id) ON DELETE CASCADE,group_id TEXT NOT NULL REFERENCES social_groups(id) ON DELETE CASCADE,permission TEXT NOT NULL CHECK(permission IN ('viewer','editor')),PRIMARY KEY(share_id,group_id));
+CREATE INDEX playlist_group_grants_group ON playlist_group_grants(group_id,share_id);
+CREATE TABLE jam_rooms(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,host_id TEXT REFERENCES users(id) ON DELETE SET NULL,json TEXT NOT NULL,version INTEGER NOT NULL,updated_at INTEGER NOT NULL,guest_controls INTEGER NOT NULL DEFAULT 0,locked INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX jam_rooms_owner ON jam_rooms(owner_id);
+CREATE TABLE jam_members(room_id TEXT NOT NULL REFERENCES jam_rooms(id) ON DELETE CASCADE,user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,seen INTEGER NOT NULL,PRIMARY KEY(room_id,user_id));
+CREATE INDEX jam_members_seen ON jam_members(room_id,seen);
+CREATE TABLE jam_invites(hash TEXT PRIMARY KEY,room_id TEXT NOT NULL REFERENCES jam_rooms(id) ON DELETE CASCADE,expires_at INTEGER NOT NULL);
+CREATE INDEX jam_invites_room ON jam_invites(room_id);
+CREATE INDEX jam_invites_expiry ON jam_invites(expires_at);
+CREATE INDEX users_created ON users(created_at,id);
+CREATE INDEX otps_invite ON otps(invite_hash);
+CREATE INDEX oauth_states_owner ON oauth_states(user_id);
+CREATE INDEX jam_rooms_host ON jam_rooms(host_id);
+CREATE INDEX invites_phone ON invites(phone);
+CREATE INDEX invites_creator ON invites(created_by);
+CREATE INDEX invites_used_by ON invites(used_by);
+CREATE INDEX clients_user ON clients(user_id);
+```

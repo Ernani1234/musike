@@ -45,7 +45,7 @@ export function registerPlayback(app: FastifyInstance, accounts: Accounts | null
       if (checking) return; checking = true;
       void accounts.authenticate(req.headers.cookie).then(async (auth) => {
         if (!auth || auth.user.id !== user || auth.session !== session) return close();
-        await sync.read(user, session, id);
+        send(await sync.read(user, session, id, false));
         if (!blocked) reply.raw.write(": heartbeat\n\n");
       }).catch(close).finally(() => { checking = false; });
     }, 15000); timer.unref();

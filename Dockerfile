@@ -15,9 +15,7 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY server/package.json server/
 COPY web/package.json web/
-COPY desktop/package.json desktop/
-COPY mobile/package.json mobile/
-# Only the server and web packages: the desktop and Android apps aren't needed here.
+# Install the supported server and web/PWA workspace packages.
 RUN pnpm install --frozen-lockfile --filter @musike/server --filter @musike/web
 COPY server server
 COPY web web

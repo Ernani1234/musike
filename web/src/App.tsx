@@ -1,3 +1,4 @@
+import { startJams } from "./lib/jams";
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
 import { AddToPlaylistDialog, ShortcutsDialog } from "./components/Dialogs";
@@ -5,8 +6,6 @@ import { MiniPlayer, TabBar } from "./components/MobileChrome";
 import { NowPlayingSheet, PanelDrawer, SidePanel } from "./components/NowPlaying";
 import { PlayerBar } from "./components/PlayerBar";
 import { Rail } from "./components/Rail";
-import { TitleBar } from "./components/TitleBar";
-import { desktop } from "./lib/desktop";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Toasts } from "./components/Toasts";
 import { TrackMenu } from "./components/TrackMenu";
@@ -32,6 +31,8 @@ const Collection = lazy(() => import("./views/Collection"));
 const Genre = lazy(() => import("./views/Genre"));
 const Home = lazy(() => import("./views/Home"));
 const Library = lazy(() => import("./views/Library"));
+const Social = lazy(() => import("./views/Social"));
+const SharedPlaylist = lazy(() => import("./views/SharedPlaylist"));
 const Search = lazy(() => import("./views/Search"));
 
 const SHEET_HASH = `#${NOW_PLAYING_HASH}`;
@@ -39,7 +40,7 @@ const SHEET_HASH = `#${NOW_PLAYING_HASH}`;
 export default function App() {
   const session = useSession();
   useEffect(() => {
-    if (session.enabled && session.user) return startPlaybackSync(usePlayer);
+    if (session.enabled && session.user) { const stopSync = startPlaybackSync(usePlayer); const stopJams = startJams(); return () => { stopJams(); stopSync(); }; }
   }, [session.enabled, session.user?.id]);
   const location = useLocation();
   const legacy = legacyRedirect(location.pathname, location.search, location.hash);
@@ -93,8 +94,7 @@ export default function App() {
   };
 
   return (
-    <div className={cn("grain flex h-dvh flex-col bg-bg md:gap-2 md:p-2", desktop && "md:pt-0")}>
-      {desktop && <TitleBar />}
+    <div className="grain flex h-dvh flex-col bg-bg md:gap-2 md:p-2">
       <div className="flex min-h-0 flex-1 md:gap-2">
         <Rail />
         <main
@@ -117,6 +117,8 @@ export default function App() {
               <Route path="/search/genre/:id" element={<Genre />} />
               <Route path="/search/artist/:id" element={<Artist />} />
               <Route path="/search/album/:id" element={<Album />} />
+              <Route path={paths.social} element={<Social />} />
+              <Route path="/shared/:id" element={<SharedPlaylist />} />
               <Route path={paths.library} element={<Library />} />
               <Route path={paths.favorites} element={<Collection kind="favorites" />} />
               <Route path={paths.history} element={<Collection kind="history" />} />

@@ -1,3 +1,5 @@
+> Current status, 19 November 2026: Hermes installed the missing system CA bundle (BUG-014), deployed it, and the user confirmed working Discord presence. This revision preserves that runtime fix and removes temporary SDK file logging. Numeric status/error/code fields are allowlisted on stdout. The live checks below are regression checks for this revised adapter, not a denial of the earlier confirmed result.
+
 # Authenticated Discord presence service
 
 This service is an **optional, unverified headless SDK deployment**, not a substitute for SDK/vendor acceptance. The source uses Discord's authenticated Social SDK connection (`UpdateToken` → `Connect` → Ready → `UpdateRichPresence`). It does not use desktop IPC, bot presence or an unofficial user token. The main app remains a web/PWA music player; this native SDK adapter is infrastructure, not a revived desktop/mobile product.

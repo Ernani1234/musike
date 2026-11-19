@@ -1,3 +1,26 @@
+# Current acceptance — expanded web/PWA revision, 19 November 2026
+
+The earlier checklists below are historical evidence. Current automated results and limits are in TEST-RESULTS.md.
+
+- [x] Retired application directories/native build wiring removed; source Docker inputs updated; remaining dependency versions preserved.
+- [x] Friend acceptance, phone privacy, opt-in presence, group ownership, shared viewer/editor authorization, stale-edit rejection and revocation/copy fixtures.
+- [x] Ordered public import, duplicate prevention, partial failure, progress before completion, owned checkpoints and cancellation fixtures.
+- [x] Direct admin Malaysian phone edit, collision/foreign rejection, session/challenge invalidation, guarded permanent deletion and cascading cleanup fixtures.
+- [x] Same-account browser coordinator fixtures plus cross-account jam queue/controls/host loss, single-output permissions and drift correction fixtures.
+- [x] Complete preload byte bounds/retention, hidden retry/unlock recovery, cancellation, stale-device takeover and false-SSE-liveness regression fixtures.
+- [ ] Samsung A07: playlist and radio × Wi-Fi and data, ten locked transitions per combination, deliberate pause/skip, unlock recovery and memory behavior.
+- [ ] Two real accounts/devices: invitation, separate output selection, guest queue addition, foreground alignment near one second, host disappearance/claim and reconnect/autoplay behavior.
+- [ ] Real 50-video public YouTube playlist: usable tracks in source order, progress, private/unavailable reporting and duplicate-free rerun. No Google credentials used.
+- [ ] Real PWA install, phone/wide/TV UI, reader/keyboard/focus behavior, narrow-screen admin forms and shared editing.
+- [ ] Actual Docker image build/run and data migration/backup/rollback through the operator pipeline.
+- [ ] Official Discord SDK build and revised service regression: Ready/profile, pause/transfer/second user and no vendor file logs.
+- [ ] Correlate Samsung trace IDs with origin/tunnel/Access/WAF logs before attributing the remaining incident cause.
+- [ ] Approve production promotion separately; this package changes source only.
+
+---
+
+## Historical acceptance records
+
 # Acceptance checklist — fork plus 19 November bugfixes
 
 Checked boxes below refer to automated fixtures/build checks performed for this package. Unchecked boxes require the operator's demo, external provider or physical device. They are not implied successes.

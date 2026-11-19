@@ -3,6 +3,7 @@ import { en, type Messages } from "./en";
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export const pt: Messages = {
+  collaboration: en.collaboration, // Explicit English fallback for collaboration features.
   features: en.features, // New instance features currently use the English catalog.
 
   locale: "pt-BR",
@@ -42,7 +43,7 @@ export const pt: Messages = {
 
   nav: {
     main: "Navegação principal",
-    home: "Início",
+    social: "Social", home: "Início",
     search: "Buscar",
     library: "Biblioteca",
     settings: "Ajustes",
@@ -382,7 +383,7 @@ export const pt: Messages = {
 
   backup: {
     yourData: "Seus dados",
-    body: "Leve playlists, favoritas e histórico para outro computador ou para o app desktop: exporte um arquivo aqui e importe na outra instância do Musike.",
+    body: "Leve playlists, favoritas e histórico para outro navegador ou computador: exporte um arquivo aqui e importe na outra instância do Musike.",
     export: "Exportar",
     exporting: "Exportando",
     import: "Importar",

@@ -1,5 +1,6 @@
 /** Every page's address, in one place. */
 export const paths = {
+  social: "/social",
   home: "/",
   search: "/search",
   searchList: "/search/list",

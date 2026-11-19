@@ -80,3 +80,17 @@ test("persisted instance settings and secure sessions survive an app restart", a
     assert.equal(response.statusCode, 200); assert.equal(response.json().media.lookahead, 6); assert.equal(response.json().otpExpiry, 240);
   } finally { await restarted?.close(); await f.cleanup(); }
 });
+
+test("admin direct phone edit and hard deletion are role/CSRF guarded and revoke the target session", async () => {
+  const f = await fixture();
+  try {
+    const admin = await f.login(1); const invitation = (await f.call("/api/admin/invites", admin.cookie, {})).json().code; const user = await f.login(2, invitation);
+    assert.equal((await f.call(`/api/admin/users/${admin.user.id}`, user.cookie, { phone: phone(3) }, "PATCH")).statusCode, 403);
+    assert.equal((await f.call(`/api/admin/users/${user.user.id}`, admin.cookie, { phone: phone(3) }, "PATCH", { origin: "https://wrong.example" })).statusCode, 403);
+    const changed = await f.call(`/api/admin/users/${user.user.id}`, admin.cookie, { phone: phone(3) }, "PATCH"); assert.equal(changed.statusCode, 200, changed.body); assert.equal(changed.json().id, user.user.id);
+    assert.equal((await f.call("/api/library", user.cookie)).statusCode, 401);
+    const removed = await f.call(`/api/admin/users/${user.user.id}`, admin.cookie, { confirmation: user.user.id }, "DELETE"); assert.equal(removed.statusCode, 200, removed.body);
+    assert.ok(!(await f.call("/api/admin/users", admin.cookie)).json().users.some((u: { id: string }) => u.id === user.user.id));
+    for (const url of ["/api/social", "/api/jams", "/api/playlist-imports"]) assert.equal((await f.call(url)).statusCode, 401);
+  } finally { await f.cleanup(); }
+});

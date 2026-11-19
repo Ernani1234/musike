@@ -48,7 +48,7 @@ export async function createBackup(): Promise<Backup> {
   };
 }
 
-/** Saves the backup as a file: a download in browsers, "Save as" on desktop, the share sheet on Android. */
+/** Saves the backup as a file: a download in the browser or installed PWA. */
 export function downloadBackup(backup: Backup): Promise<void> {
   return saveFile(`musike-backup-${backup.exportedAt.slice(0, 10)}.musike.json`, JSON.stringify(backup, null, 2));
 }

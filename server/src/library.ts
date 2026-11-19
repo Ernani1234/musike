@@ -1,11 +1,11 @@
 import { msg } from "./i18n.js";
 import { HttpError, VIDEO_ID, type Library, type Playlist, type Track, type Origin } from "./types.js";
 
-// No Node-only imports here: the Android app runs this same module, with its own storage.
+// Storage-independent library operations; persistence is supplied by the server.
 
 const HISTORY_LIMIT = 60;
 
-/** Where the library is kept: a file on the server and the desktop app, app storage on Android. */
+/** Where the library is kept: a server file or an authenticated owner-scoped database row. */
 export interface LibraryStorage {
   read(): Promise<string | null>;
   write(json: string): Promise<void>;
@@ -15,8 +15,8 @@ const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max
 
 function sanitizeOrigin(input: unknown): Origin | undefined {
   const o = (input ?? {}) as Partial<Origin>;
-  if (o.provider !== "youtube-music" || typeof o.sourceId !== "string" || o.sourceId.length > 600 || !["playlist", "album", "like", "history"].includes(o.kind ?? "")) return undefined;
-  return { provider: "youtube-music", sourceId: o.sourceId, kind: o.kind! };
+  if (!["youtube-music", "youtube"].includes(o.provider ?? "") || typeof o.sourceId !== "string" || o.sourceId.length > 600 || !["playlist", "album", "like", "history"].includes(o.kind ?? "")) return undefined;
+  return { provider: o.provider!, sourceId: o.sourceId, kind: o.kind! };
 }
 export function sanitizeTrack(input: unknown): Track {
   const t = (input ?? {}) as Record<string, unknown>;
@@ -158,7 +158,7 @@ async function renamePlaylist(pid: string, name: string): Promise<Playlist> {
   const clean = name.trim().slice(0, 80);
   if (!clean) throw new HttpError(400, msg("playlistNameRequired"));
   p.name = clean;
-  p.updatedAt = Date.now();
+  p.updatedAt = Math.max(Date.now(), p.updatedAt + 1);
   await persist();
   return p;
 }
@@ -180,7 +180,7 @@ async function addToPlaylist(pid: string, tracks: Track | Track[]): Promise<Play
       p.tracks.push(track);
     }
   }
-  p.updatedAt = Date.now();
+  p.updatedAt = Math.max(Date.now(), p.updatedAt + 1);
   await persist();
   return p;
 }
@@ -189,12 +189,21 @@ async function removeFromPlaylist(pid: string, trackId: string): Promise<Playlis
   const lib = await load();
   const p = findPlaylist(lib, pid);
   p.tracks = p.tracks.filter((t) => t.id !== trackId);
-  p.updatedAt = Date.now();
+  p.updatedAt = Math.max(Date.now(), p.updatedAt + 1);
   await persist();
   return p;
 }
 
-// Backup import: a library exported from any Musike instance (web, desktop, another computer).
+/** Optimistic revision check for authorized shared editing. */
+async function editPlaylist(pid: string, revision: number, name: string, tracks: Track[]): Promise<Playlist> {
+  const p = findPlaylist(await load(), pid);
+  if (p.updatedAt !== revision) throw new HttpError(409, "Playlist changed; reload before editing");
+  const seen = new Set<string>();
+  p.name = name; p.tracks = tracks.filter(t => !seen.has(t.id) && !!seen.add(t.id));
+  p.updatedAt = Math.max(Date.now(), p.updatedAt + 1); await persist(); return p;
+}
+
+// Backup import: a library exported from any Musike instance (another browser or computer).
 
 const MAX_PLAYLISTS = 1000;
 const MAX_TRACKS = 5000;
@@ -291,7 +300,7 @@ async function importLibrary(input: unknown, mode: "merge" | "replace"): Promise
   return result;
 }
 
-return { useLibraryStorage, getLibrary, getTrackPage, addFavorite, addFavorites, removeFavorite, pushHistory, createPlaylist, renamePlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, importLibrary };
+return { editPlaylist, useLibraryStorage, getLibrary, getTrackPage, addFavorite, addFavorites, removeFavorite, pushHistory, createPlaylist, renamePlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, importLibrary };
 }
 
 const sharedLibrary = createLibrary();
