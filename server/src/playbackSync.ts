@@ -15,7 +15,7 @@ export interface SyncView {
 }
 type Device = { id: string; session: string; name: string; seen: number; bucketAt: number; count: number; listeners: Set<(view: SyncView) => void> };
 type Room = { active: string | null; epoch: number; revision: number; updatedAt: number; snapshot: PlaybackSnapshot;
-  devices: Map<string, Device>; commands: PlaybackCommand[]; transfer: string | null; seq: number; savedAt: number; };
+  devices: Map<string, Device>; commands: PlaybackCommand[]; transfer: string | null; transferAt: number; seq: number; savedAt: number; };
 const empty = (): PlaybackSnapshot => ({ queue: [], original: null, index: 0, position: 0, duration: 0, status: "idle", shuffle: false, repeat: "off", autoRadio: true });
 const finite = (v: unknown, max: number) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= max;
 function tracks(value: unknown): Track[] {
@@ -52,6 +52,19 @@ export class PlaybackSync {
   private stopped = false;
   onChange?: (user: string, snapshot: PlaybackSnapshot) => void;
   constructor(readonly accounts: Accounts, private now = Date.now) {}
+  private live(d?: Device) { return !!d && (d.listeners.size > 0 || this.now() - d.seen < 45000); }
+  /** Reap devices whose tabs died without releasing: drop stale entries, a dead active output, and hung transfers. */
+  private async reconcile(user: string, room: Room, claimant?: string) {
+    let changed = false;
+    for (const [id, d] of room.devices) if (id !== room.active && !d.listeners.size && this.now() - d.seen > 180000) { room.devices.delete(id); changed = true; }
+    if (room.transfer && (this.now() - room.transferAt > 30000 || !this.live(room.active ? room.devices.get(room.active) : undefined))) { room.transfer = null; changed = true; }
+    if (room.active && !this.live(room.devices.get(room.active))) {
+      if (claimant && claimant !== room.active) room.active = claimant;
+      else if (!claimant) { room.snapshot = { ...room.snapshot, status: "paused" }; room.active = null; }
+      room.epoch++; room.seq = 0; room.commands = []; room.transfer = null; changed = true;
+    }
+    if (changed) await this.changed(user, room, true);
+  }
   private async room(user: string): Promise<Room> {
     let room = this.rooms.get(user); if (room) return room;
     for (const [owner, old] of this.rooms) {
@@ -61,12 +74,12 @@ export class PlaybackSync {
     const row = await this.accounts.db.get("SELECT json FROM playback_state WHERE user_id=?", [user]);
     const saved = row ? JSON.parse(row.json) : null;
     room = { active: saved?.active ?? null, epoch: (saved?.epoch ?? 0) + 1, revision: saved?.revision ?? 0, updatedAt: this.now(),
-      snapshot: saved ? { ...cleanSnapshot(saved.snapshot), status: "paused" } : empty(), devices: new Map(), commands: [], transfer: null, seq: 0, savedAt: 0 };
+      snapshot: saved ? { ...cleanSnapshot(saved.snapshot), status: "paused" } : empty(), devices: new Map(), commands: [], transfer: null, transferAt: 0, seq: 0, savedAt: 0 };
     this.rooms.set(user, room); return room;
   }
   private view(room: Room, id: string): SyncView {
     return { deviceId: id, active: room.active, epoch: room.epoch, revision: room.revision, updatedAt: room.updatedAt, snapshot: room.snapshot,
-      devices: [...room.devices.values()].map((d) => ({ id: d.id, name: d.name, online: this.now() - d.seen < 45000 })),
+      devices: [...room.devices.values()].map((d) => ({ id: d.id, name: d.name, online: this.live(d) })),
       command: room.active === id && room.commands[0] && this.now() - room.commands[0].at < 15000 ? room.commands[0] : null, transfer: room.transfer };
   }
   private async save(user: string, room: Room) {
@@ -83,7 +96,7 @@ export class PlaybackSync {
   async register(user: string, session: string, clientId: unknown, name: unknown) {
     if (typeof clientId !== "string" || !/^[\w-]{8,80}$/.test(clientId)) throw fail(400, "Invalid client identity");
     return this.accounts.lock(`playback:${user}`, async () => {
-      const room = await this.room(user); const id = this.accounts.box.hash(`${user}:${clientId}`);
+      const room = await this.room(user); await this.reconcile(user, room); const id = this.accounts.box.hash(`${user}:${clientId}`);
       for (const [key, d] of room.devices) if (key !== room.active && !d.listeners.size && this.now() - d.seen > 180000) room.devices.delete(key);
       let device = room.devices.get(id);
       if (!device) {
@@ -108,12 +121,13 @@ export class PlaybackSync {
     return this.accounts.lock(`playback:${user}`, async () => {
       await this.read(user, session, id); const room = this.rooms.get(user)!;
       const device = room.devices.get(id)!;
+      await this.reconcile(user, room, id);
       if (this.now() - device.bucketAt >= 60000) { device.bucketAt = this.now(); device.count = 0; }
       if (++device.count > 120) throw fail(429, "Playback command rate limit reached");
       if (input.type === "claim") {
         if (room.transfer && room.transfer !== id) throw fail(409, "Another playback transfer is pending");
         if (room.active && room.active !== id) {
-          room.transfer = id; // The old device must actually pause and acknowledge before a grant.
+          room.transfer = id; room.transferAt = this.now(); // The old device must actually pause and acknowledge before a grant.
         } else if (!room.active) {
           room.active = id; room.epoch++; room.seq = 0;
           if (room.snapshot.queue.length) room.commands.push({ id: randomUUID(), action: "resume", args: [], at: this.now() });
