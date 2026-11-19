@@ -280,7 +280,7 @@ Base: uploaded fork main `da3f88384651cdf8ee487054a50b0effb277cb45`. The user ap
 - There is no implicit success delay. Explicit YTDLP_DELAY remains a compatibility opt-in; YTDLP_WRAP_SUCCESS_DELAY can override it. Existing operator settings are not silently removed. Measure the deployed combination before disabling a known mitigation.
 - POSIX fixtures verify success timing, arguments, retry cap, clean stdout, fatal/pass-through behavior, delay override and signal forwarding. No actual system yt-dlp executable or container mount was changed here.
 
-### BUG-006 — browser mitigation implemented; Cloudflare/device hypotheses remain unverified
+## BUG-006 — browser mitigation implemented; Cloudflare/device hypotheses remain unverified
 
 - Browser-side buffering of an already-ready next track reduces dependence on a new fetch at the transition. Visibility/online hooks, bounded recovery, request/trace/Ray identifiers and exportable client diagnostics make lock-screen failures inspectable.
 - Synthetic media tests exercise ended transitions while visibility is hidden. They do not emulate Android process termination or prove physical screen-off playback on the reported phone.
