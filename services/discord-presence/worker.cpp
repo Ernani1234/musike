@@ -7,11 +7,14 @@
 #include <string>
 #include <optional>
 #include <memory>
+#include <filesystem>
 
 // One authenticated SDK instance per process. Tokens arrive only on a private stdin pipe.
 using Json = nlohmann::json;
 int main() {
   auto client = std::make_shared<discordpp::Client>();
+  std::filesystem::create_directories("/tmp/discord-logs");
+  client->SetLogDir("/tmp/discord-logs", discordpp::LoggingSeverity::Verbose);
   bool ready = false;
   bool changed = false;
   std::optional<Json> activity;
