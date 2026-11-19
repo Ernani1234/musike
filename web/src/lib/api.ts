@@ -25,9 +25,12 @@ const failureText = (failure: FailureKind) => {
 };
 async function request<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
   const { json, ...rest } = init ?? {}; const started = Date.now(); const trace = playbackTrace() || beginPlaybackTrace();
+  // Only fixed route categories, never queries, provider URLs or user-controlled path segments.
+  const operation = path.startsWith("/api/queue/") ? "queue.prepare" : path.startsWith("/api/history") ? "library.history" :
+    path.startsWith("/api/prepare/") ? "media.prepare" : path.startsWith("/api/radio/") ? "radio" : path.startsWith("/api/video-for/") ? "video.lookup" : "api";
   const media = /^\/api\/(radio|prepare|queue|video-for)/.test(path);
   const signal = media ? AbortSignal.any([...(rest.signal ? [rest.signal] : []), AbortSignal.timeout(20_000)]) : rest.signal;
-  recordPlayback("http.start", { traceId: trace });
+  recordPlayback("http.start", { traceId: trace, operation });
   let res: Response;
   try { res = await fetch(path, { ...rest, redirect: "manual", credentials: "same-origin", signal, headers: {
     [LANG_HEADER]: getLang(), "x-musike-request": "1", ...(trace ? { "x-musike-trace": trace } : {}),
@@ -36,10 +39,10 @@ async function request<T>(path: string, init?: RequestInit & { json?: unknown })
   catch (error) {
     if (rest.signal?.aborted) throw error;
     const failure = signal?.aborted ? "timeout" : "network";
-    recordPlayback("http.error", { traceId: trace, ms: Date.now() - started, reason: failure });
+    recordPlayback("http.error", { traceId: trace, operation, ms: Date.now() - started, reason: failure });
     throw new ApiError(0, failureText(failure), undefined, failure, trace);
   }
-  recordPlayback("http.response", { traceId: trace, status: res.status, ms: Date.now() - started, edgeRay: res.headers.get("cf-ray") ?? undefined });
+  recordPlayback("http.response", { traceId: trace, operation, requestId: res.headers.get("x-musike-request-id") ?? undefined, status: res.status, ms: Date.now() - started, edgeRay: res.headers.get("cf-ray") ?? undefined });
   if (res.status === 204) return undefined as T;
   const failure = responseFailure(res);
   if (failure && !res.headers.get("content-type")?.includes("json")) {

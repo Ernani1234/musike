@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { createApp } from "../src/app.js";
 import { config } from "../src/config.js";
 
-const phone = (n: number) => `6${String(n).padStart(10, "0")}`;
+const phone = (n: number) => `6012${String(n).padStart(7, "0")}`;
 async function fixture(trustProxy = "") {
   const dir = await mkdtemp(path.join(tmpdir(), "musike-admin-")); const previous = { ...config }; config.dataDir = dir;
   let now = Date.now(); const codes = new Map<string, string>();

@@ -24,6 +24,7 @@ import { useLibrary } from "../stores/library";
 import { trackIds } from "../lib/trackIds";
 import { IconButton, PlayDisc } from "./IconButton";
 import { Slider } from "./Slider";
+import { PlaybackDevices } from "./PlaybackDevices";
 
 export function PlayPauseIcon({ size = 22 }: { size?: number }) {
   const status = usePlayer((s) => s.status);
@@ -117,7 +118,7 @@ export function Scrubber({ touch = false, className }: { touch?: boolean; classN
     );
   }
   return (
-    <div className={cn("flex items-center gap-2", className)}>
+    <div className={cn("flex flex-wrap items-center gap-2", className)}>
       <span className="text-right">{time}</span>
       <Slider label={t.player.progress} value={position} max={duration} buffered={buffered} onChange={seek} onScrub={setScrub} step={5} valueText={formatTime} className="flex-1" />
       {total}
@@ -194,6 +195,7 @@ export function ModeSwitch({ className }: { className?: string }) {
           <VideoCameraIcon size={15} /> {t.player.video}
         </button>
       </div>
+      <PlaybackDevices />
       {showingVideo && (
         <button
           type="button"

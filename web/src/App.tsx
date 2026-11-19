@@ -21,6 +21,7 @@ import { cn } from "./lib/format";
 import { legacyRedirect, NOW_PLAYING_HASH, paths } from "./lib/routes";
 import { useSession } from "./stores/session";
 import { usePlayer } from "./player/player";
+import { startPlaybackSync } from "./lib/playbackSync";
 import { useLibrary } from "./stores/library";
 import { openSettings, useSystem } from "./stores/system";
 import { toast, useUi } from "./stores/ui";
@@ -37,6 +38,9 @@ const SHEET_HASH = `#${NOW_PLAYING_HASH}`;
 
 export default function App() {
   const session = useSession();
+  useEffect(() => {
+    if (session.enabled && session.user) return startPlaybackSync(usePlayer);
+  }, [session.enabled, session.user?.id]);
   const location = useLocation();
   const legacy = legacyRedirect(location.pathname, location.search, location.hash);
   const navigate = useNavigate();

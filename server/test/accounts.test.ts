@@ -8,7 +8,7 @@ import { config } from "../src/config.js";
 import { createApp } from "../src/app.js";
 import { secretBox } from "../src/secret.js";
 
-const phone = (n: number) => `6${String(n).padStart(10, "0")}`;
+const phone = (n: number) => `6012${String(n).padStart(7, "0")}`;
 const secret = "test-only-secret-".repeat(4);
 const track = { id: "testtrack01", title: "Existing song", artist: "Test artist", duration: 10, thumb: "", art: "", kind: "song" as const };
 async function fixture() {
@@ -24,7 +24,7 @@ test("auth migration backs up original once and remains idempotent across restar
     const json = JSON.stringify({ favorites: [track], playlists: [], history: [] });
     await writeFile(path.join(f.dir, "library.json"), json);
     account = await Accounts.open(f.options);
-    const owner = await account.db.get("SELECT * FROM users WHERE phone=?", [phone(1)]);
+    const owner = await account.db.get("SELECT * FROM users WHERE phone=?", [`+${phone(1)}`]);
     assert.equal((await account.library(owner!.id).getLibrary()).favorites.length, 1);
     assert.equal(await readFile(path.join(f.dir, "library.json.before-auth.bak"), "utf8"), json);
     await account.library(owner!.id).removeFavorite(track.id); await account.close();

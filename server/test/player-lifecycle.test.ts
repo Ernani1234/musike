@@ -33,7 +33,7 @@ async function harness() {
     navigator: { userAgent: "Chrome", platform: "Linux", maxTouchPoints: 0, mediaSession: { metadata: null, playbackState: "none", setPositionState() {}, setActionHandler: (name: string, callback: any) => h.handlers.set(name, callback) } },
     MediaMetadata: class { constructor(_data: unknown) {} }, location: { protocol: "https:", reload() {} },
     addEventListener: browser.addEventListener.bind(browser), removeEventListener: browser.removeEventListener.bind(browser), dispatchEvent: browser.dispatchEvent.bind(browser),
-    setInterval: (...args: any[]) => { const timer = (interval as any)(...args); timer.unref(); timers.push(timer); return timer; },
+    setInterval: (...args: any[]) => { (h.intervals ??= []).push({ run: args[0], ms: args[1] }); const timer = (interval as any)(...args); timer.unref(); timers.push(timer); return timer; },
     setTimeout: (...args: any[]) => { const timer = (timeout as any)(...args); if (args[1] > 1000) timer.unref(); timers.push(timer); return timer; },
   };
   const descriptors = new Map(Object.keys(values).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -105,13 +105,15 @@ test("radio stale responses cannot replace manual intent and authentication erro
     assert.equal(p().status, "error"); assert.equal(f.h.notices.at(-1)[2].label, "Sign in again");
   } finally { release?.([]); await f.cleanup(); }
 });
-test("transient media failure retries the same track once; visibility recovery preserves a deliberate pause", async () => {
+test("transient media failures retry twice without a visibility change; deliberate pause remains paused", async () => {
   const f = await harness(); const p = () => f.player.getState();
   try {
     p().setAutoRadio(false); p().playList([track(1), track(2)]); await f.tick();
-    f.h.elements[0].emit("error"); await f.tick(); assert.equal(p().status, "playing"); assert.equal(p().index, 0);
+    f.h.elements[0].emit("error"); await new Promise((r) => setTimeout(r, 550)); await f.tick(); assert.equal(p().status, "playing"); assert.equal(p().index, 0);
+    f.h.elements[0].emit("error"); await new Promise((r) => setTimeout(r, 1050)); await f.tick(); assert.equal(p().status, "playing");
     f.h.elements[0].emit("error"); await f.tick(); assert.equal(p().status, "error"); assert.equal(p().index, 0);
-    f.browser.dispatchEvent(new Event("online")); await f.tick(); assert.equal(p().status, "playing");
+    f.browser.dispatchEvent(new Event("online")); await f.tick(); assert.equal(p().status, "error");
+    p().toggle(); await f.tick();
     p().toggle(); await f.tick(); const plays = f.h.plays;
     f.document.visibilityState = "hidden"; f.document.dispatchEvent(new Event("visibilitychange"));
     f.document.visibilityState = "visible"; f.document.dispatchEvent(new Event("visibilitychange")); await f.tick();
@@ -127,5 +129,33 @@ test("a rejected spare-element autoplay falls back to the previously authorised 
     f.h.elements[0].emit("ended"); await f.tick();
     assert.equal(p().index, 1); assert.equal(p().status, "playing");
     assert.ok(f.h.elements[0].src.includes(track(2).id));
+  } finally { await f.cleanup(); }
+});
+
+test("hidden playback that starts then stalls recovers without unlock, preserving position", async () => {
+  const f = await harness(); const p = () => f.player.getState(); const now = Date.now;
+  try {
+    p().setAutoRadio(false); p().playList([track(1), track(2)]); await f.tick();
+    f.document.visibilityState = "hidden";
+    f.h.elements[0].emit("ended"); await f.tick();
+    const active = f.h.elements[1]; active.currentTime = 1.8; active.emit("timeupdate"); active.emit("waiting");
+    f.h.errors = { message: "Browser cannot play", failure: undefined };
+    Date.now = () => now() + 10000;
+    f.h.intervals.find((t: any) => t.ms === 5000).run(); await f.tick();
+    await new Promise((resolve) => setTimeout(resolve, 550)); await f.tick();
+    assert.equal(f.document.visibilityState, "hidden"); assert.equal(p().index, 1); assert.equal(p().status, "playing");
+    active.emit("loadedmetadata"); assert.equal(active.currentTime, 1.8);
+  } finally { Date.now = now; await f.cleanup(); }
+});
+
+test("a scheduled hidden retry cannot resume after a deliberate pause or skip", async () => {
+  const f = await harness(); const p = () => f.player.getState();
+  try {
+    p().setAutoRadio(false); p().playList([track(1), track(2)]); await f.tick(); f.document.visibilityState = "hidden";
+    f.h.elements[0].emit("error"); await f.tick(); p().toggle(); const plays = f.h.plays;
+    await new Promise((resolve) => setTimeout(resolve, 550)); await f.tick();
+    assert.equal(p().status, "paused"); assert.equal(f.h.plays, plays);
+    p().toggle(); await f.tick(); f.h.elements[0].emit("error"); await f.tick(); p().next(); await f.tick();
+    await new Promise((resolve) => setTimeout(resolve, 1050)); await f.tick(); assert.equal(p().index, 1); assert.equal(p().status, "playing");
   } finally { await f.cleanup(); }
 });

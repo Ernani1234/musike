@@ -55,3 +55,8 @@ Payload: 47 replacements/new files below, plus this manifest and BUGFIXES.patch 
 | Changed | web/src/native/api.ts | 298e16c9850d6bb793976a3321ded8fbfd1e17829720382afb20cbdbb1c44e40 |
 | Changed | web/src/player/player.ts | d235085a0f210dd75a42b9e65127d0cfbe8354062f2a7ed3d73aae91364da5d0 |
 | Changed | web/src/stores/session.ts | 7d35c0252c6a1450b2eca9fec3da937b31dbb0a8f10b6bedb9efc9ee2228f785 |
+
+
+## 19 November production revision — complete source delivery
+
+The new Musike_Production_Fixes_Device_Sync_20261119.zip is a complete source tree, not the earlier overlay described above. It contains the original fork files plus approved changes, full replacement files, PRODUCTION-FIXES.patch, PRODUCTION-FIXES-IMPACT.md, updated documentation, a SHA-256 source manifest and the Hermes handoff/Cloudflare/removal instructions. It excludes .git, dependency directories, generated bundles, runtime databases/caches, SDK binaries/headers, credentials and the raw client diagnostic attachment. Platform folders remain intentionally until Hermes executes the separate removal runbook.

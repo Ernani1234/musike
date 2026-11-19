@@ -22,6 +22,9 @@ import { Accounts, type AccountOptions } from "./accounts.js";
 import { trustedProxies } from "./proxy.js";
 import { AudioCache, type AudioSourceOptions } from "./audioCache.js";
 import { acquireFileLease } from "./cacheBudget.js";
+import { registerPlayback } from "./playbackRoutes.js";
+import { registerDiscord } from "./discordRoutes.js";
+import type { DiscordOptions } from "./discord.js";
 
 function videoId(params: unknown): string {
   const id = (params as { id?: string }).id ?? "";
@@ -49,7 +52,7 @@ export interface RunningServer {
 }
 
 /** Builds API and static routes without opening a socket, for startup and injection tests. */
-export async function createApp(options: AccountOptions & { trustProxy?: string; google?: GoogleOptions; audio?: AudioSourceOptions; onPlaybackEvent?: (event: PlaybackFields) => void } = {}) {
+export async function createApp(options: AccountOptions & { trustProxy?: string; google?: GoogleOptions; discord?: DiscordOptions; audio?: AudioSourceOptions; onPlaybackEvent?: (event: PlaybackFields) => void } = {}) {
   library.useLibraryStorage(fileStorage());
   const proxy = trustedProxies(options.trustProxy);
   const app = Fastify({ trustProxy: proxy.trust, logger: { level: process.env.LOG_LEVEL ?? "warn", serializers: { req: (request: { method?: string; url?: string; ip?: string }) => ({ method: request.method, path: request.url?.split("?")[0], ip: request.ip }) } } });
@@ -57,11 +60,14 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
   const timingLog = app.log.child({ component: "playback" }, { level: diagnostics ? "info" : "warn" });
   const contexts = new WeakMap<object, { trace: TraceContext; started: number }>();
   app.addHook("onRequest", (req, reply, done) => {
+    req.realClientIp = proxy.realIp(req);
     const id = traceId(req.headers["x-musike-trace"] ?? new URL(req.url, "http://local").searchParams.get("trace"));
     reply.header("x-musike-request-id", req.id); reply.header("x-musike-trace", id);
+    const edgeRay = safePlaybackFields({ edgeRay: typeof req.headers["cf-ray"] === "string" ? req.headers["cf-ray"] : undefined }).edgeRay;
     const trace: TraceContext = { traceId: id, requestId: req.id, emit: (event) => {
-      if (diagnostics) { if (options.onPlaybackEvent) options.onPlaybackEvent({ ...event, ip: req.realClientIp }); else timingLog.info({ event: "playback", ...event, ip: req.realClientIp }); }
-      else if (event.stage?.endsWith("error") || event.status && event.status >= 500) timingLog.warn({ event: "playback", ...event, ip: req.realClientIp });
+      const fields = { ...event, edgeRay, ip: req.realClientIp };
+      if (diagnostics) { if (options.onPlaybackEvent) options.onPlaybackEvent(fields); else timingLog.info({ event: "playback", ...fields }); }
+      else if (event.stage?.endsWith("error") || event.status && event.status >= 500) timingLog.warn({ event: "playback", ...fields });
     } };
     contexts.set(req, { trace, started: Date.now() });
     reply.raw.once("close", () => { if (!reply.raw.writableFinished && /^\/api\/(stream|prepare|queue|radio|video-for)/.test(req.url)) withPlaybackTrace(trace, () => playbackStage("http.disconnected")); });
@@ -89,7 +95,8 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
     const e = err as Error & { statusCode?: number };
     const status = e instanceof HttpError ? e.status : e.statusCode ?? 500;
     if (status >= 500) {
-      app.log.error({ event: "request.error", status, path: req.routeOptions.url, ip: req.realClientIp });
+      const context = contexts.get(req)?.trace;
+      app.log.error({ event: "request.error", traceId: context?.traceId, requestId: context?.requestId, status, path: req.routeOptions.url, ip: req.realClientIp });
       if (accounts) void accounts.audit(req.musikeUser?.id ?? null, "request.error", req.routeOptions.url ?? null, req.realClientIp, "error").catch(() => {});
     }
     // Musike's own errors are translated into the language the app asked for.
@@ -103,7 +110,11 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
   });
 
   try {
-  accounts = await registerAccounts(app, options, proxy);
+  accounts = await registerAccounts(app, { ...options, onAudit: (event) => {
+    app.log.child({ component: "audit" }, { level: "info" }).info(event); options.onAudit?.(event);
+  } }, proxy);
+  const sync = registerPlayback(app, accounts);
+  registerDiscord(app, accounts, sync, options.discord);
   await registerAdmin(app, accounts);
   google = accounts ? new GoogleImport(accounts, options.google) : null;
   registerGoogle(app, google); await google?.recover(); google?.schedule();
@@ -204,6 +215,8 @@ export async function createApp(options: AccountOptions & { trustProxy?: string;
     properties: { events: { type: "array", maxItems: 40, items: { type: "object", required: ["stage", "traceId", "at"], additionalProperties: false,
       properties: { traceId: { type: "string", pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" }, stage: { type: "string", pattern: "^[A-Za-z0-9_.-]{1,50}$" },
         videoId: { type: "string", pattern: "^[A-Za-z0-9_-]{11}$" }, at: { type: "number" }, ms: { type: "number" }, status: { type: "integer" },
+        operation: { type: "string", pattern: "^[A-Za-z0-9_.-]{1,80}$" }, requestId: { type: "string", pattern: "^[A-Za-z0-9_.-]{1,80}$" },
+        position: { type: "number", minimum: 0 }, buffered: { type: "number", minimum: 0 }, readyState: { type: "integer", minimum: 0, maximum: 4 }, networkState: { type: "integer", minimum: 0, maximum: 3 }, mediaCode: { type: "integer", minimum: 0, maximum: 4 },
         edgeRay: { type: "string", pattern: "^[0-9a-fA-F]{16,32}-[A-Za-z]{3}$" }, reason: { type: "string", pattern: "^[A-Za-z0-9_-]{1,50}$" }, visibility: { type: "string", enum: ["visible", "hidden", "prerender", "unknown"] } } } } } } } }, async (req, reply) => {
     if (!diagnostics) return reply.code(204).send();
     const key = req.musikeUser?.id ?? req.realClientIp; const now = Date.now();

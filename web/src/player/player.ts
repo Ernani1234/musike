@@ -9,6 +9,8 @@ import type { Track } from "../lib/types";
 import { playerWriter, type SavedPlayer as Saved } from "../lib/playerPersistence";
 import { upcomingTracks } from "../lib/playbackQueue";
 import { SessionCache } from "../lib/sessionCache";
+import { playbackCanOutput } from "../lib/playbackSync";
+import type { SharedPlayback } from "../lib/playbackSync";
 import { useLibrary } from "../stores/library";
 import { openSettings } from "../stores/system";
 import { toast } from "../stores/ui";
@@ -20,7 +22,7 @@ export type Status = "idle" | "loading" | "playing" | "paused" | "error";
 type Kind = "audio" | "video";
 type Quality = "sd" | "hd";
 
-interface PlayerState {
+export interface PlayerState {
   queue: Track[];
   /** Queue order before shuffle was turned on, restored when it is turned off. */
   original: Track[] | null;
@@ -66,6 +68,8 @@ interface PlayerState {
   setAutoRadio: (on: boolean) => void;
   warmUpcoming: () => void;
   stopSession: () => void;
+  suspendOutput: () => void;
+  resumeOutput: (snapshot: SharedPlayback) => void;
 }
 
 // Media elements live outside React so playback survives any re-render or route change.
@@ -95,6 +99,16 @@ let lookahead = 3;
 let qualityChanged = false;
 let loadingAt = Date.now();
 let onLoadingDeadline = () => {};
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+const cancelRetry = () => { if (retryTimer) clearTimeout(retryTimer); retryTimer = null; };
+function mediaFields(media: HTMLMediaElement) {
+  let buffered = 0;
+  for (let n = 0; n < media.buffered.length; n++) {
+    const start = typeof media.buffered.start === "function" ? media.buffered.start(n) : 0;
+    if (start <= media.currentTime + .1 && media.buffered.end(n) >= media.currentTime) buffered = media.buffered.end(n) - media.currentTime;
+  }
+  return { position: media.currentTime, buffered, readyState: media.readyState, networkState: media.networkState, mediaCode: media.error?.code };
+}
 
 const STORAGE_KEY = `musike:player${sessionStorage.getItem("musike:user") ? `:${sessionStorage.getItem("musike:user")}` : ""}`;
 
@@ -158,14 +172,16 @@ export const usePlayer = create<PlayerState>((set, get) => {
   }
 
   function load(index: number, opts: { autoplay?: boolean; startAt?: number; disablePreload?: boolean } = {}) {
-    if (sessionLost) return;
+    if (sessionLost || !playbackCanOutput()) return;
+    cancelRetry();
     manualRadio?.abort();
     const s = get();
     const track = s.queue[index];
     if (!track) return;
     if (recoveryId !== track.id) { recoveryId = track.id; recoveryCount = 0; }
     resumeWanted = opts.autoplay !== false;
-    const reusable = !opts.disablePreload && !s.preferVideo && preloaded?.id === track.id && spareAudio && spareAudio.readyState >= 2 && !spareAudio.error;
+    const reusable = !opts.disablePreload && !s.preferVideo && preloaded?.id === track.id && spareAudio && spareAudio.readyState >= 2 && !spareAudio.error &&
+      mediaFields(spareAudio).buffered >= Math.min(8, Math.max(1, track.duration || 8));
     const trace = reusable ? preloaded!.trace : undefined;
     beginPlaybackTrace(trace); recordPlayback("player.load", { videoId: track.id });
 
@@ -190,7 +206,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     const kind = kindFor(track);
     if (kind === "audio" && reusable && spareAudio) {
       audio.pause(); const previous = audio; audio = spareAudio; spareAudio = previous; preloaded = null;
-      spareAudio.removeAttribute("src"); spareAudio.load(); recordPlayback("player.preloaded_handoff", { videoId: track.id });
+      spareAudio.removeAttribute("src"); spareAudio.load(); recordPlayback("player.preloaded_handoff", { videoId: track.id, ...mediaFields(audio) });
     }
     const media = mediaFor(kind);
     const other = mediaFor(kind === "video" ? "audio" : "video");
@@ -252,6 +268,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
   let warmTimer: ReturnType<typeof setTimeout> | null = null;
   let warmRetries = 0;
   let manualRadio: AbortController | null = null;
+  let warming = "";
 
   function primeRadio(force = false): Promise<void> {
     const s = get();
@@ -290,6 +307,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
   }
 
   function warmQueue() {
+    if (!playbackCanOutput()) return;
     const s = get();
     if (radioJob && (radioJob.queue !== s.queue || !s.autoRadio || s.repeat !== "off")) { radioJob.controller.abort(); radioJob = null; }
     const current = s.queue[s.index];
@@ -299,7 +317,9 @@ export const usePlayer = create<PlayerState>((set, get) => {
     }
     if (sessionLost || !current || (s.status !== "playing" && s.status !== "loading")) return;
     const queue = s.queue; const index = s.index;
-    if (api.prefetch) void api.prefetch(current.id, upcoming.map((track) => track.id)).then((result) => {
+    const signature = `${current.id}:${upcoming.map((track) => track.id).join(",")}:${s.preferVideo}`;
+    if (api.prefetch && warming === signature) return;
+    if (api.prefetch) { warming = signature; void api.prefetch(current.id, upcoming.map((track) => track.id)).then((result) => {
       if (sessionLost || get().queue !== queue || get().index !== index) return;
       if (result) lookahead = result.lookahead;
       const next = upcoming[0];
@@ -314,7 +334,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
         warmTimer = setTimeout(() => { warmTimer = null; warmQueue(); }, 1500);
       }
       void primeRadio();
-    }).catch((error) => recordPlayback("prepare.error", { reason: (error as ApiError).failure ?? "request" }));
+    }).catch((error) => recordPlayback("prepare.error", { reason: (error as ApiError).failure ?? "request" }))
+      .finally(() => { if (warming === signature) warming = ""; }); }
     else for (const track of upcoming.slice(0, 3)) void api.prepare(track.id).catch(() => {});
     void primeRadio();
     if (s.preferVideo && upcoming[0]) void lookupClip(upcoming[0]).then((id) => api.prepare(id ?? upcoming[0]!.id).catch(() => {}));
@@ -331,6 +352,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
   }
 
   function onEnded() {
+    if (!playbackCanOutput()) return;
     recordPlayback("player.ended");
     const s = get();
     if (s.repeat === "one") {
@@ -371,11 +393,11 @@ export const usePlayer = create<PlayerState>((set, get) => {
   let retriedToken = -1;
   let probingToken = -1;
 
-  function onError(media: HTMLMediaElement) {
+  function onError(media: HTMLMediaElement, stalled = false) {
     const mine = token;
     if (probingToken === mine) return;
     const url = media.currentSrc || media.src;
-    recordPlayback("media.error");
+    recordPlayback(stalled ? "media.stalled" : "media.error", mediaFields(media));
     if (capabilities.retryOnError && retriedToken !== mine) {
       const at = media.currentTime || get().position;
       load(get().index, { startAt: at, autoplay: true });
@@ -386,13 +408,22 @@ export const usePlayer = create<PlayerState>((set, get) => {
     set({ status: "error" });
     explainStreamError(url, media.error?.code).then(({ message, code, failure }) => {
       if (mine !== token || sessionLost) return;
-      if (recoverableFailure(failure) && !code && retriedToken !== mine && recoveryCount < 2) {
-        recoveryCount++; load(get().index, { startAt: media.currentTime || get().position }); retriedToken = token;
-      } else report(message, code, failure);
+      // A successful probe describes the origin, not the stalled element. It must not turn a
+      // confirmed no-progress deadline into an unsupported-codec failure.
+      const kind = stalled && !failure && !code ? "timeout" : failure;
+      if (resumeWanted && recoverableFailure(kind) && !code && recoveryCount < 2) {
+        const at = media.currentTime || get().position; const index = get().index;
+        recoveryCount++; lastFailure = kind;
+        recordPlayback("player.retry", { reason: kind, position: at });
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          if (mine === token && !sessionLost && resumeWanted) load(index, { startAt: at, disablePreload: true });
+        }, 500 * recoveryCount);
+      } else report(stalled && !failure && !code ? getT().features.networkTimeout : message, code, kind);
     }).catch(() => { if (mine === token) report(getT().features.networkFailure, undefined, "network"); });
   }
 
-  onLoadingDeadline = () => { loadingAt = Date.now(); const media = activeMedia(); if (media) onError(media); };
+  onLoadingDeadline = () => { loadingAt = Date.now(); const media = activeMedia(); if (media && resumeWanted) onError(media, true); };
 
   function wire(media: HTMLMediaElement) {
     const isActive = () => activeMedia() === media;
@@ -413,7 +444,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     });
     media.addEventListener("playing", () => {
       if (!isActive()) return;
-      set({ status: "playing", statusText: null });
+      loadingAt = Date.now(); set({ status: "playing", statusText: null });
       onStarted();
       syncPlaybackState();
     });
@@ -423,11 +454,11 @@ export const usePlayer = create<PlayerState>((set, get) => {
       syncPlaybackState();
     });
     media.addEventListener("waiting", () => {
-      if (isActive() && !media.paused) { if (get().status !== "loading") loadingAt = Date.now(); set({ status: "loading" }); recordPlayback("player.waiting"); }
+      if (isActive() && !media.paused) { if (get().status !== "loading") loadingAt = Date.now(); set({ status: "loading" }); recordPlayback("player.waiting", mediaFields(media)); }
     });
     media.addEventListener("timeupdate", () => {
       if (!isActive() || pendingSeek > 0) return;
-      if (Math.abs(media.currentTime - get().position) >= 0.2) set({ position: media.currentTime });
+      if (Math.abs(media.currentTime - get().position) >= 0.2) { loadingAt = Date.now(); set({ position: media.currentTime }); }
       syncSystemMedia(); // throttled on the other side
     });
     media.addEventListener("progress", () => {
@@ -560,6 +591,9 @@ export const usePlayer = create<PlayerState>((set, get) => {
 
     toggle: () => {
       const s = get();
+      if (retryTimer || s.status === "loading" && resumeWanted) {
+        cancelRetry(); resumeWanted = false; token++; activeMedia()?.pause(); set({ status: "paused", statusText: null }); return;
+      }
       const track = s.queue[s.index];
       if (!track) return;
       const kind = kindFor(track);
@@ -571,7 +605,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
         needsClipLookup(track, s.preferVideo);
       if (stale || s.status === "error") return load(s.index, { startAt: s.position });
       const media = mediaFor(kind);
-      if (media.paused) play(media);
+      if (media.paused) { resumeWanted = true; play(media); }
       else { resumeWanted = false; media.pause(); }
     },
 
@@ -648,8 +682,21 @@ export const usePlayer = create<PlayerState>((set, get) => {
     },
 
     setAutoRadio: (autoRadio) => set({ autoRadio }),
+    suspendOutput: () => {
+      cancelRetry(); resumeWanted = false; token++; loaded = null; pendingSeek = 0; preloaded = null;
+      radioJob?.controller.abort(); manualRadio?.abort();
+      if (warmTimer) { clearTimeout(warmTimer); warmTimer = null; }
+      for (const media of [audio, videoEl, ...(spareAudio ? [spareAudio] : [])]) { media.pause(); media.removeAttribute("src"); media.load(); }
+      set({ status: get().queue.length ? "paused" : "idle", statusText: null, buffered: 0 });
+      syncPlaybackState();
+    },
+    resumeOutput: (snapshot) => {
+      set({ ...snapshot, status: "paused", statusText: null, buffered: 0 });
+      if (snapshot.queue.length) load(snapshot.index, { startAt: snapshot.position, disablePreload: true });
+    },
     warmUpcoming: () => { warmRetries = 0; if (warmTimer) { clearTimeout(warmTimer); warmTimer = null; } warmQueue(); },
     stopSession: () => {
+      cancelRetry();
       radioJob?.controller.abort(); manualRadio?.abort(); if (warmTimer) clearTimeout(warmTimer); token++; loaded = null; resumeWanted = false; preloaded = null;
       for (const media of [audio, videoEl, ...(spareAudio ? [spareAudio] : [])]) { media.pause(); media.removeAttribute("src"); media.load(); }
       set({ queue: [], original: null, index: 0, status: "idle", statusText: null, position: 0, duration: 0, buffered: 0 });
@@ -710,7 +757,7 @@ addEventListener("online", restorePlayback);
 addEventListener("pageshow", restorePlayback);
 setInterval(() => {
   const state = usePlayer.getState();
-  if (state.status === "loading" && state.statusText !== "fetchingRadio" && state.statusText !== "findingClip" && loaded && Date.now() - loadingAt > 25_000) onLoadingDeadline();
+  if (state.status === "loading" && state.statusText !== "fetchingRadio" && state.statusText !== "findingClip" && loaded && Date.now() - loadingAt > 8000) onLoadingDeadline();
   void flushPlaybackEvents();
 }, 5000);
 

@@ -20,3 +20,7 @@ server/cache/
 .env
 .DS_Store
 Thumbs.db
+
+# Operator-supplied Discord vendor SDK and locally compiled adapter
+services/discord-presence/discord_social_sdk/
+services/discord-presence/discord-worker

@@ -13,3 +13,9 @@ Scope: this fork and the four-phase WIP package described in ARCHITECTURE.md. Re
 - Preserve optimistic ordering, localized updates and bounded lists/jobs/caches. Queue warming must cover manual/playlist/radio/repeat paths and cancel stale byte work without evicting active/nearer-needed media.
 - Keep migrations transactional, backed up, idempotent and fail-safe. Keep SQLite schema/index docs and endpoint/asset maps factual. Document private Google API limitations instead of claiming unsupported categories succeeded.
 - Run pnpm test, pnpm typecheck and affected web/native/server/desktop bundles. Record actual counts and distinguish mocked tests/build checks from live provider/device acceptance. Update CHANGELOG.md, architecture, deployment notes and acceptance checks with behavioral changes.
+
+## Approved 19 November 2026 production revision
+
+The user explicitly approved BUG-007–012 work plus per-account device synchronization and an authenticated Discord Social SDK service. Web/PWA-only is the intended product. Hermes owns platform retirement in a separate commit following docs/PLATFORM-REMOVAL.md; preserve legacy native build wiring until that runbook is executed. The optional server-side SDK adapter does not authorize restoring an end-user desktop/mobile product or editing existing operator compose/environment files.
+
+Keep one audio output per account through pause-confirmed transfer, not a heartbeat-based forced takeover. Browser/OS/network uncertainty must be documented. Malaysian OTP identities use +60 canonical storage, with digits only at the provider boundary; foreign numbers must not be delivered. Existing duplicate/invalid identities require operator resolution, never an automatic merge. Keep all private playback/OAuth SQL within db worker RPC and owner scope. Vendor SDK binaries/credentials must not enter source packages; real Discord/device/tunnel acceptance remains distinct from fixtures.

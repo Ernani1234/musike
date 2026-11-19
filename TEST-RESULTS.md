@@ -36,3 +36,27 @@ Checks used Node v24.22.3 and pnpm v11.25.0; repository manifests remain Node-22
 Player tests execute the actual player store with controlled media/API fixtures, not a real Chromium renderer or a physical locked Android process. Candidate/provider/wasphere/Google tests use injected or disposable fixtures, not operator secrets. The POSIX wrapper tests invoke a temporary fake executable, not the production yt-dlp installation. No Docker image/installer/device build, live provider import, public tunnel/Access/WAF inspection or audible latency measurement was performed.
 
 The exact failed Takeout input/production adapter is absent from this ZIP. BUG-002's source matching/progress is fixed, but no measured reduction of the reported 387 misses is claimed. BUG-004/006 remain real-incident/device/edge-verification pending despite source instrumentation and recovery mitigations. Use DEMO-VERIFICATION.md and append sanitized evidence before marking those symptoms fully resolved.
+
+## Approved BUG-007–012 + device-sync revision — 19 November 2026
+
+| Check | Actual result |
+| --- | --- |
+| Full pnpm test script | **106 tests passed; 0 failed, 0 skipped** |
+| pnpm typecheck script | Server, web, standalone native types and Electron types passed |
+| pnpm build | Web/PWA production build passed; manifest/service worker generated |
+| pnpm --filter @musike/server bundle | Passed |
+| pnpm --filter @musike/web build:native | Passed; existing large-chunk advisory remains |
+| pnpm --filter musike-desktop bundle | Passed |
+| Node syntax check: presence service.mjs | Passed |
+| git diff --check | Passed |
+| Browser screenshot/UI runtime test | Attempted but blocked: no packaged Playwright browser; system Chromium then failed with socket Operation not permitted. No visual acceptance claimed. |
+| Official Discord C++ SDK compilation/runtime | Not run: Developer Portal SDK headers/binaries and application access not supplied. HTTP service used a mock SDK process in tests. |
+| Docker image, physical device, live provider and Cloudflare acceptance | Not run here; Hermes checklist supplied |
+
+Environment: Node v24.22.3; available pnpm runner 11.25.0; repository declaration pnpm@10.14.0 is unchanged. The environment runner attempted dependency verification/build-policy rewriting on initial bare pnpm commands. Those workspace edits were removed. Checks were executed with environment-only `--config.verifyDepsBeforeRun=false --config.managePackageManagerVersions=false` so source/lockfile policy remained unchanged. The operator should use the declared pnpm 10.14.0 and production Node 22.13+ in the image pipeline. Dependency package versions and lockfile did not change.
+
+Regressions added: Malaysian format equivalence and foreign rejection; consistent phone backup/backfill/idempotence and collision failure; server ownership/command/transfer fencing; two actual browser coordinator modules against the real synchronization backend, including reconnect, shuffle object identity and pause-before-output ordering; actual player hidden playing→waiting recovery, position retention and cancellation; Discord PKCE/owner/single-use/encrypted storage and identity uniqueness; playback/clear/disconnect and safe logs; real internal HTTP service authentication/capacity/cleanup with an injected mock SDK process.
+
+One existing Google progress fixture was timing-sensitive: it observed processed=1 before its durable imported count reached 1 under parallel load. Its wait now requires both conditions; no Google engine behavior changed. Synthetic account fixtures were changed to Malaysian canonical-compatible examples. The original wrapper's ZIP permission was 0644 and direct execution failed; contents are unchanged and executable mode is restored.
+
+These results establish source behavior, not the original tunnel cause, uninterrupted physical lock-screen audio, rendered narrow/TV UI quality, vendor SDK compatibility or production deployment. Historical results above belong to earlier packages.

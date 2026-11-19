@@ -43,6 +43,13 @@ CREATE TABLE IF NOT EXISTS import_items(user_id TEXT NOT NULL REFERENCES users(i
 `;
 
 type Value = string | number | null;
+const featureSchema = `
+CREATE TABLE playback_state(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,json TEXT NOT NULL,updated_at INTEGER NOT NULL);
+CREATE TABLE discord_connections(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,discord_id TEXT NOT NULL UNIQUE,encrypted TEXT NOT NULL,updated_at INTEGER NOT NULL);
+CREATE TABLE discord_states(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,verifier_enc TEXT NOT NULL,expires_at INTEGER NOT NULL);
+CREATE INDEX discord_states_expiry ON discord_states(expires_at);
+CREATE INDEX discord_states_owner ON discord_states(user_id);
+INSERT INTO migrations(key,value) VALUES('playback-discord-v1','1');`;
 export type Statement = { sql: string; params?: Value[]; mode?: "get" | "all" | "run" };
 /** SQLite is synchronous only inside this worker; request handlers await RPC, never block on SQL. */
 export class Database {
@@ -56,15 +63,20 @@ export class Database {
     const source = `const {parentPort,workerData}=require('node:worker_threads');
       const {DatabaseSync}=require('node:sqlite');
       const db=new DatabaseSync(workerData.file);db.exec(workerData.schema);
+      if(!db.prepare("SELECT key FROM migrations WHERE key='playback-discord-v1'").get()){
+        if(db.prepare('SELECT count(*) AS n FROM users').get().n) {const target=workerData.file+'.before-playback-discord-'+require('node:crypto').randomUUID()+'.sqlite';db.prepare('VACUUM INTO ?').run(target);require('node:fs').chmodSync(target,0o600);}
+        db.exec('BEGIN IMMEDIATE');try{db.exec(workerData.featureSchema);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
+      }
       const execute=({sql,params=[],mode='run'})=>{const q=db.prepare(sql);const value=q[mode](...params);
         return mode==='run'?{changes:Number(value.changes),lastInsertRowid:Number(value.lastInsertRowid)}:value;};
       parentPort.on('message',({id,operation,statements})=>{try{let result;
         if(operation==='close'){db.close();parentPort.postMessage({id,result:true});parentPort.close();return;}
+        if(operation==='backup'){db.prepare('VACUUM INTO ?').run(statements[0].params[0]);require('node:fs').chmodSync(statements[0].params[0],0o600);parentPort.postMessage({id,result:true});return;}
         if(operation==='batch'){db.exec('BEGIN IMMEDIATE');try{result=statements.map(execute);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}
         else result=execute(statements[0]);parentPort.postMessage({id,result});
       }catch(e){parentPort.postMessage({id,error:'Database operation failed',detail:e.message});}});
       parentPort.postMessage({id:0,result:true});`;
-    this.worker = new Worker(source, { eval: true, workerData: { file, schema } });
+    this.worker = new Worker(source, { eval: true, workerData: { file, schema, featureSchema } });
     this.worker.on("message", ({ id, result, error, detail }) => {
       const job = this.pending.get(id); if (!job) return; this.pending.delete(id);
       if (error) job.reject(new Error(error, { cause: detail })); else job.resolve(result);
@@ -87,6 +99,7 @@ export class Database {
   all<T = Record<string, any>>(sql: string, params: Value[] = []) { return this.request<T[]>("query", [{ sql, params, mode: "all" }]); }
   run(sql: string, params: Value[] = []) { return this.request<{ changes: number }>("query", [{ sql, params }]); }
   batch(statements: Statement[]) { return this.request<any[]>("batch", statements); }
+  backup(file: string) { return this.request<boolean>("backup", [{ sql: "", params: [file] }]); }
   close(): Promise<void> {
     this.closed ??= (async () => { this.ending = true; try { if (!this.unavailable) await this.request("close", []); } finally { await this.worker.terminate(); } })();
     return this.closed;

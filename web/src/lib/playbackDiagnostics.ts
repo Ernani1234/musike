@@ -1,5 +1,6 @@
 export type FailureKind = "authentication" | "edge_challenge" | "unexpected_response" | "timeout" | "network" | "server";
-export interface PlaybackEvent { traceId: string; stage: string; at: number; videoId?: string; status?: number; ms?: number; reason?: string; visibility?: string; edgeRay?: string; }
+export interface PlaybackEvent { traceId: string; stage: string; at: number; videoId?: string; status?: number; ms?: number; reason?: string; visibility?: string; edgeRay?: string;
+  operation?: string; requestId?: string; position?: number; buffered?: number; readyState?: number; networkState?: number; mediaCode?: number; }
 const events: PlaybackEvent[] = [];
 let activeTrace = ""; let enabled = false;
 let sender: ((events: PlaybackEvent[]) => Promise<void>) | null = null;
@@ -12,7 +13,8 @@ export function recordPlayback(stage: string, fields: Partial<Omit<PlaybackEvent
   const event: PlaybackEvent = { traceId: fields.traceId || activeTrace || beginPlaybackTrace(), stage, at: Date.now() };
   if (fields.edgeRay && /^[0-9a-f]{16,32}-[A-Z]{3}$/i.test(fields.edgeRay)) event.edgeRay = fields.edgeRay;
   if (fields.videoId && /^[\w-]{11}$/.test(fields.videoId)) event.videoId = fields.videoId;
-  for (const key of ["status", "ms"] as const) if (Number.isFinite(fields[key])) event[key] = fields[key];
+  for (const key of ["status", "ms", "position", "buffered", "readyState", "networkState", "mediaCode"] as const) if (Number.isFinite(fields[key])) event[key] = Math.max(0, fields[key]!);
+  for (const key of ["operation", "requestId"] as const) if (fields[key] && /^[\w.-]{1,80}$/.test(fields[key]!)) event[key] = fields[key];
   if (fields.reason && /^[\w-]{1,50}$/.test(fields.reason)) event.reason = fields.reason;
   event.visibility = typeof document === "undefined" ? "unknown" : document.visibilityState;
   events.push(event); if (events.length > 200) { events.shift(); cursor = Math.max(0, cursor - 1); }

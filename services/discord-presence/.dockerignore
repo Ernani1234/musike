@@ -1,0 +1,10 @@
+**
+!Dockerfile
+!service.mjs
+!worker.cpp
+!discord_social_sdk/
+!discord_social_sdk/include/
+!discord_social_sdk/include/**
+!discord_social_sdk/lib/
+!discord_social_sdk/lib/release/
+!discord_social_sdk/lib/release/libdiscord_partner_sdk.so

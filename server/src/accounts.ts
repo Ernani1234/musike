@@ -6,16 +6,15 @@ import { Database } from "./db.js";
 import { config } from "./config.js";
 import { instanceSecret, secretBox } from "./secret.js";
 import { createLibrary } from "./library.js";
+import { malaysianPhone } from "./phone.js";
 
 export type User = { id: string; phone: string; name: string; role: "admin" | "user"; status: "approved" | "pending" | "disabled"; last_seen: number | null };
 export type AccountOptions = { enabled?: boolean; adminPhone?: string; secret?: string; publicOrigin?: string; transport?: typeof fetch;
-  sendOtp?: (phone: string, code: string) => Promise<void>; now?: () => number };
+  sendOtp?: (phone: string, code: string) => Promise<void>; now?: () => number;
+  onAudit?: (event: { event: string; actor: string | null; action: string; target: string | null; ip: string; level: string }) => void };
 export const fail = (statusCode: number, message: string) => Object.assign(new Error(message), { statusCode });
 export const emptyLibrary = () => ({ favorites: [], playlists: [], history: [] });
-export function phoneOf(value: unknown): string {
-  if (typeof value !== "string" || !/^[+\d\s()-]+$/.test(value)) throw fail(400, "Invalid phone number");
-  const phone = value.replace(/\D/g, ""); if (!/^\d{8,15}$/.test(phone)) throw fail(400, "Invalid phone number"); return phone;
-}
+export const phoneOf = malaysianPhone;
 export function cookies(header = "") { return Object.fromEntries(header.split(";").map((part) => part.trim().split("=")).filter(([key, value]) => key && value)); }
 
 export class Accounts {
@@ -42,7 +41,7 @@ export class Accounts {
     const db = await Database.open(path.join(config.dataDir, "musike.sqlite"));
     try {
       const accounts = new Accounts(db, options.secret ?? await instanceSecret(config.dataDir), options);
-      await accounts.migrate(); return accounts;
+      await accounts.normalizePhones(); await accounts.migrate(); return accounts;
     } catch (e) { await db.close(); throw e; }
   }
   async lock<T>(key: string, work: () => Promise<T>): Promise<T> {
@@ -55,6 +54,28 @@ export class Accounts {
     return row ? JSON.parse(row.value) as T : fallback;
   }
   async setSetting(key: string, value: unknown) { await this.db.run("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [key, JSON.stringify(value)]); }
+  private async normalizePhones() {
+    if (await this.db.get("SELECT key FROM migrations WHERE key='malaysia-phone-v1'")) return;
+    const users = await this.db.all<{ id: string; phone: string }>("SELECT id,phone FROM users");
+    const invites = await this.db.all<{ hash: string; phone: string }>("SELECT hash,phone FROM invites WHERE phone IS NOT NULL");
+    const seen = new Set<string>();
+    const normalize = (value: string) => {
+      try { return phoneOf(value); } catch { throw new Error("Phone migration stopped: invalid legacy identity; inspect the protected database backup locally"); }
+    };
+    const normalized = users.map((user) => ({ ...user, phone: normalize(user.phone) }));
+    for (const user of normalized) {
+      if (seen.has(user.phone)) throw new Error("Phone migration stopped: duplicate normalized identities; manual resolution required");
+      seen.add(user.phone);
+    }
+    const bound = invites.map((invite) => ({ ...invite, phone: normalize(invite.phone) }));
+    if (users.length || invites.length) await this.db.backup(path.join(config.dataDir, `musike.before-malaysia-phone-${randomUUID()}.sqlite`));
+    await this.db.batch([
+      ...normalized.map((user) => ({ sql: "UPDATE users SET phone=? WHERE id=?", params: [user.phone, user.id] })),
+      ...bound.map((invite) => ({ sql: "UPDATE invites SET phone=? WHERE hash=?", params: [invite.phone, invite.hash] })),
+      { sql: "DELETE FROM otps" },
+      { sql: "INSERT INTO migrations(key,value) VALUES('malaysia-phone-v1',?)", params: [String(this.now())] },
+    ]);
+  }
   async migrate() {
     if (await this.db.get("SELECT key FROM migrations WHERE key='shared-library-v1'")) return;
     let source: string | null = null;
@@ -90,6 +111,7 @@ export class Accounts {
     return lib;
   }
   async audit(actor: string | null, action: string, target: string | null, ip: string, level = "info") {
+    this.options.onAudit?.({ event: "audit", actor, action, target, ip, level });
     await this.db.run("INSERT INTO audit(at,actor,action,target,ip,level) VALUES(?,?,?,?,?,?)", [this.now(), actor, action, target, ip, level]);
     await this.db.run("DELETE FROM audit WHERE id NOT IN (SELECT id FROM audit ORDER BY id DESC LIMIT 1000)");
   }
@@ -129,13 +151,14 @@ export class Accounts {
     }));
   }
   private async sendOtp(phone: string, code: string, expiry: number) {
-    if (this.options.sendOtp) return this.options.sendOtp(phone, code);
+    const recipient = phoneOf(phone).slice(1);
+    if (this.options.sendOtp) return this.options.sendOtp(recipient, code);
     const { WASPHERE_URL: base, WASPHERE_API_KEY: key, WASPHERE_WORKSPACE_ID: workspace, WASPHERE_SESSION: session } = process.env;
     if (!base || !key || !workspace || !session) throw fail(503, "OTP provider is not configured");
     const url = new URL(base); if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw fail(503, "Invalid OTP provider configuration");
     const response = await (this.options.transport ?? fetch)(`${base.replace(/\/$/, "")}/workspaces/${encodeURIComponent(workspace)}/proxy/api/sessions/${encodeURIComponent(session)}/messages/text`, {
       method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ to: phone, text: `Musike login code: ${code}. Expires in ${Math.ceil(expiry / 60)} minutes. Do not share this code.` }), signal: AbortSignal.timeout(30_000),
+      body: JSON.stringify({ to: recipient, text: `Musike login code: ${code}. Expires in ${Math.ceil(expiry / 60)} minutes. Do not share this code.` }), signal: AbortSignal.timeout(30_000),
     });
     await response.body?.cancel();
     if (!response.ok) throw fail(response.status >= 400 && response.status < 500 && response.status !== 408 ? 400 : 503, "OTP delivery failed");

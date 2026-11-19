@@ -69,3 +69,17 @@ Checked boxes below refer to automated fixtures/build checks performed for this 
 - [ ] Test the reported Android PWA with screen off across at least ten transitions, plus manual next, rapid skips, pause/resume, online recovery and app restart. Synthetic hidden visibility is not physical-device evidence.
 - [ ] Compare wrapper legacy-delay and override-zero modes on demo, with real primary/direct fallback/403 behavior. Preserve rollback until measured.
 - [ ] Confirm source-only overlay installation keeps the approved wrapper executable, all operator-owned settings/mounts intact and owner/session isolation functional. No production deployment was performed here.
+
+## 19 November — BUG-007–012 and account playback sync
+
+- [x] Actual player fixtures exercise hidden playing→waiting→position-preserving recovery and pause/skip cancellation.
+- [x] Phone normalization/backfill/backup, invalid/foreign rejection, canonical collisions and idempotence fixtures.
+- [x] Real server sync policy plus two real browser coordinator modules verify remote controls and pause-before-transfer ordering, stale-write rejection and owner/session isolation.
+- [x] Discord OAuth PKCE/single-use/owner state, encrypted tokens, identity uniqueness, playback/clear/disconnect and log redaction fixtures.
+- [x] Internal service HTTP authentication, capacity/worker cleanup and log redaction with a mock SDK process.
+- [ ] Samsung A07 physical playlist/radio × Wi-Fi/mobile-data, ten consecutive locked transitions per combination, including sustained progress after handoff.
+- [ ] Real origin/tunnel/Access/WAF correlation for the reported or newly captured stall.
+- [ ] Real cross-device autoplay, transfer/offline/close/restart/disable/session-expiry and narrow-screen UI acceptance.
+- [ ] Official vendor SDK compilation, app eligibility, headless Ready, two users' real Discord profiles and absence of vendor-created log files.
+- [ ] Hermes separate platform retirement commit and Docker image acceptance.
+- [ ] Azan approval before production promotion or Cloudflare/tunnel changes.

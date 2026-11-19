@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — BUG-007–012 and device synchronization — 2026-11-19
+
+- BUG-007: corrected the incident interpretation from the supplied 48-event export: the next track started hidden, then stalled. Added contiguous-buffer handoff checks, queue-request coalescing, an eight-second no-progress deadline and two cancellable hidden-state retries preserving position. Real Samsung/edge cause remains acceptance-pending.
+- BUG-010: fixed operation/request/media-state diagnostic fields, resolved-IP and traceable failure/audit stdout records, structured startup. Existing SQLite audit/progress functions retained by user decision; no app log files.
+- BUG-011: Malaysian +60 canonical identity input/storage and digits-only wasphere delivery; consistent worker backups, collision/invalid preflight, transactional idempotent users/invites backfill and OTP invalidation.
+- Added authenticated account-level playback synchronization, bounded owner state/commands/SSE, per-document identities, stale-write fencing and pause-confirmed transfers. Volume/appearance/video preference remain local; no forced takeover of unreachable output.
+- BUG-009: added owner-bound Discord OAuth/PKCE, encrypted token lifecycle and an isolated authenticated C++ SDK service source. Vendor SDK compilation/headless operation/app eligibility and real profile acceptance remain unverified; feature gracefully hides without configuration.
+- BUG-008: completed the reference evaluation and exact Hermes retirement instructions; actual platform deletion is deliberately a separate Hermes commit. BUG-012: delivered evidence-first Cloudflare/tunnel audit prompt with Azan approval and rollback gates.
+- BUG-002 remains awaiting the user's import rerun; BUG-003 closed by user acceptance; BUG-005 provisionally accepted, wrapper content retained (executable archive metadata corrected). Original Hermes reports remain append-only.
+- Added playback/Discord tables via backed-up worker migration; dependencies, CSS tokens and existing operator configs unchanged. See TEST-RESULTS.md and PRODUCTION-FIXES-IMPACT.md.
+
 ## Unreleased — targeted BUG-002–006 fixes — 2026-11-19
 
 - BUG-002: original-ID validation, Unicode title/artist/duration/version ranking, ordered bounded resolver fallbacks and reviewable uncertain/provider failures. Added live progress, bounded report deltas/checkpoints and preserved restart reports; retries remain idempotent. The supplied source has no Takeout adapter; the reported failed export still needs demo reproduction.

@@ -17,7 +17,7 @@ const source: ImportSource = { collections: [
 async function fixture() {
   const dir = await mkdtemp(path.join(tmpdir(), "musike-google-")); const previous = config.dataDir; config.dataDir = dir;
   let now = Date.now();
-  const options = { adminPhone: `6${"0".repeat(10)}`, secret: "test-only-google-secret-".repeat(3), now: () => now };
+  const options = { adminPhone: "60120000001", secret: "test-only-google-secret-".repeat(3), now: () => now };
   const accounts = await Accounts.open(options);
   const user = (await accounts.db.get("SELECT id FROM users"))!.id as string;
   let exchanges = 0; let imports = 0; let resolutions = 0;
@@ -73,7 +73,7 @@ test("Google OAuth state is single use, tokens encrypted, and imports preserve o
 test("a second user's import stays isolated and daily sync is opt-in per user", async () => {
   const f = await fixture();
   try {
-    const second = randomUUID(); await f.accounts.db.run("INSERT INTO users(id,phone,created_at) VALUES(?,?,?)", [second, `6${"1".repeat(10)}`, Date.now()]);
+    const second = randomUUID(); await f.accounts.db.run("INSERT INTO users(id,phone,created_at) VALUES(?,?,?)", [second, "+60120000002", Date.now()]);
     await f.connect(f.user); await f.connect(second);
     await f.service.start(second); await f.wait(second);
     assert.equal((await f.accounts.library(f.user).getLibrary()).playlists.length, 0);
@@ -141,7 +141,7 @@ test("import status exposes durable live item progress and owner-scoped cursor d
   try {
     await f.connect(f.user); const { runId } = await f.service.start(f.user);
     let running = await f.service.status(f.user, 0, runId);
-    for (let n = 0; n < 200 && running.report?.progress.processed < 1; n++) { await new Promise((resolve) => setTimeout(resolve, 5)); running = await f.service.status(f.user, 0, runId); }
+    for (let n = 0; n < 200 && (running.report?.progress.processed < 1 || running.report?.imported < 1); n++) { await new Promise((resolve) => setTimeout(resolve, 5)); running = await f.service.status(f.user, 0, runId); }
     assert.equal(running.status, "running"); assert.equal(running.report.progress.total, 6);
     assert.equal(running.report.progress.processed, 1); assert.equal(running.report.imported, 1);
     assert.equal(running.report.items[0].sourceId, sourceTrack(2).id);

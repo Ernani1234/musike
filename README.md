@@ -300,7 +300,7 @@ pnpm typecheck  # checks every package
 
 ## Moving your library (backup)
 
-Until cloud sync exists, Musike exports everything to a file that **any instance** can read: web, desktop, Android, Docker, another computer.
+Authenticated users now share their playback queue/state across web/PWA devices with one active output. Library export remains the portable backup/transfer mechanism between instances: web, desktop, Android, Docker or another computer. Native-target retirement is a separate Hermes operation; see `docs/PLATFORM-REMOVAL.md`.
 
 1. On the source, open **Settings > Your data > Export** (or the database icon in the Library). A `musike-backup-YYYY-MM-DD.musike.json` file is saved (on Android, the share sheet opens so you can save or send it).
 2. On the destination, **Settings > Your data > Import** and pick the file.
@@ -482,3 +482,10 @@ Musike is a project for **personal and educational use**. Playing YouTube conten
 ## License
 
 [MIT](LICENSE) © 2026 Ernani Neto
+
+
+## 19 November production revision
+
+Authenticated web/PWA accounts now have synchronized playback state, remote controls and explicit pause-confirmed device transfer. Malaysian OTP entry normalizes to +60 and rejects foreign numbers; existing identity migration stops safely on conflicts. Structured container diagnostics support the post-handoff stall investigation. Optional authenticated Discord presence source requires operator-provided Social SDK access/binaries and real headless acceptance before activation.
+
+See [Hermes verification](docs/HERMES-VERIFICATION.md), [Discord service](services/discord-presence/README.md), [platform retirement](docs/PLATFORM-REMOVAL.md) and [Cloudflare audit prompt](docs/CF-TUNNEL-AUDIT-PROMPT.md). This is source delivery, not a production deployment or a claim of physical-device/vendor acceptance.

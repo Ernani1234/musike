@@ -404,3 +404,68 @@ Cached audio is <videoId>.audio.bin plus .audio.json MIME/size metadata; HD is <
 
 
 The 19 November source package includes the explicitly approved deploy/ytdlp-wrap.sh replacement only. Other operator-owned deployment files remain unchanged. The wrapper retries classified transient metadata extraction at most two attempts by default; download/version/update commands pass through. No implicit success sleep exists; explicit legacy YTDLP_DELAY and an optional YTDLP_WRAP_SUCCESS_DELAY override remain operator controls. All new variables/bounds are in DEPLOYMENT-NOTES.md. BUG-004/006 production cause/physical-device acceptance remains pending in HERMES_FOUND_BUGS.md and DEMO-VERIFICATION.md.
+
+## 6. Approved production revision — BUG-007–012 and device sync (19 November 2026)
+
+This section supersedes earlier descriptions where behavior changed. The user approved the evaluated plan before implementation. The default application remains Fastify/TypeScript + React/Zustand/Tailwind; no UI framework, CSS variable, inline style system, dependency version or existing operator environment/compose content changed. Native target deletion is an approved **Hermes follow-up**, documented in docs/PLATFORM-REMOVAL.md; until executed the legacy directories/build substitutions remain and are validated. The optional Discord native adapter is server infrastructure, not a desktop/mobile product.
+
+### Source boundaries and wiring
+
+| File | Ownership |
+| --- | --- |
+| server/src/phone.ts | Pure Malaysian +60 canonicalization; rejects foreign/invalid input. Accounts re-exports phoneOf so ADMIN_PHONE, OTP/invites and promote share one policy. |
+| server/src/accounts.ts | Backed-up/idempotent malaysia-phone-v1 migration before shared-library ownership migration; no UUID/library/role merge. Provider delivery converts canonical +60 to digits only. audit() emits sanitized stdout records through the injected app logger as well as existing SQLite audit rows. |
+| server/src/db.ts | Worker-only VACUUM INTO backup RPC; populated existing DB backed up before transactional playback-discord-v1 additive schema. Phone backfill uses the same worker/transaction boundary. Backup file permissions are 0600. |
+| server/src/playbackSync.ts | Parameterized owner-keyed persistence and bounded in-process device/command rooms, epoch/sequence rejection and explicit pause-confirmed transfer. |
+| server/src/playbackRoutes.ts | Authenticated device registration/commands/state and bounded SSE; revalidates session/status every 15 seconds. Slow SSE readers retain one latest pending view. |
+| web/src/lib/playbackSync.ts | Browser-only coordinator with injected Zustand player, per-live-document identity, serial mutations, five-second progress publication, reconnect and small pagehide release. |
+| web/src/player/player.ts | Actual media output only on the granted client; suspendOutput cancels work and removes sources before transfer acknowledgement. resumeOutput restores shared queue/position with local media preferences. |
+| web/src/components/PlaybackDevices.tsx | Existing Modal/buttons and semantic utilities for device status and explicit transfer; used by Controls/AccountPanel. No new DOM IDs or root data attributes. |
+| server/src/discord.ts / discordRoutes.ts | Owner-bound OAuth/PKCE, encrypted tokens, uniqueness of linked Discord identity, refresh/revoke and authenticated internal service delivery. Credentials never enter browser state, discovery, yt-dlp, Google or media resolution. |
+| services/discord-presence/service.mjs / worker.cpp | Private bearer-authenticated HTTP boundary, bounded one-process-per-user C++ Social SDK adapter using authenticated Connect. No vendor files are supplied; SDK compilation/headless/multi-user eligibility remains operator verification. |
+| web/src/components/DiscordSection.tsx | Optional link/unlink and honest service readiness in AccountPanel; typed labels in en.features, with pt.features explicitly inheriting that catalog. |
+
+App startup: registerAccounts → registerPlayback → registerDiscord → existing admin/Google wiring. AuthGate still resolves the owner before lazy App/player state; App starts sync only for an authenticated user. Auth-off and standalone native retain their existing local/shared behavior. No replica/process scaling was added. Optional Discord absence never blocks playback/login.
+
+### Added HTTP contracts
+
+All paths use the existing login/CSRF/origin wall and no-store. Owner IDs always come from the session. Discord callback also requires the originating authenticated owner; callback URLs/codes never enter logs.
+
+| Method/path | Input | Response |
+| --- | --- | --- |
+| POST /api/playback/devices | {clientId,name?}; clientId 8–80 word/hyphen characters, names sanitized/capped 40 | SyncView with opaque deviceId, active, epoch, revision, updatedAt, snapshot, owner devices, owner-device command and transfer target |
+| GET /api/playback/state | deviceId | Owner/session-scoped SyncView |
+| GET /api/playback/updates | deviceId | text/event-stream; data is SyncView; 15-second session/status recheck and heartbeat; no-store |
+| POST /api/playback/sync | deviceId + type claim, command or snapshot; 2 MiB cap | Updated SyncView; 409 rejects lost ownership, stale sequence/epoch or blocked transfer |
+| GET /api/discord/status | None | {configured,connected,ready}; never credentials |
+| POST /api/discord/connect | Empty body | {url} for registered HTTPS OAuth callback, owner-bound ten-minute state, PKCE S256, openid identify sdk.social_layer_presence |
+| GET /api/discord/callback | state/code plus owner's cookie | Redirect /library?discord=connected after single-use state and identity verification |
+| POST /api/discord/disconnect | Empty body | {ok:true}; local credential deletion, internal clear and one revocation attempt |
+
+Snapshot = {queue:Track[],original:Track[]|null,index,position,duration,status,shuffle,repeat,autoRadio}. Only the active device/epoch can publish, and seq must increase. Commands are allowlisted public player actions; volume, mute, theme and video preference are not remote commands. Sync queues are capped at 500 tracks, retaining the current track and up to 100 preceding rows. Library playlists/backups retain their existing full collections. First playback claims an unowned account; other clients mirror/control without audio. claim on another device records a transfer target; old output must remove sources and acknowledge paused/idle before a new epoch is granted. No time-based forced takeover of an unreachable browser. Pagehide uses a small keepalive position/release acknowledgement; logout awaits release. A lost/crashed old document may require verified operator repair if release could not arrive. Opening a cloned tab uses a different document identity.
+
+Bounds: 128 in-memory rooms, 8 devices/owner, 2 SSE connections/device, 20 pending commands, 15-second command expiry, 120 mutation requests/device/minute, one coalesced pending SSE view, five-second progress persistence. Queue/status/ack/ownership changes are persisted immediately. Inactive rooms are discarded only after their state has been persisted; a reload of durable state is paused. A live browser can keep playing during transport loss, but remote commands require connectivity. Browser autoplay and OS suspension limits remain real acceptance constraints.
+
+### Added SQLite tables/indexes
+
+The worker applies playback-discord-v1 transactionally after a consistent backup when existing users are present. Phone migration marker is malaysia-phone-v1. Both use the existing migrations table.
+
+| Table | Columns/constraints |
+| --- | --- |
+| playback_state | user_id TEXT PK FK users(id) ON DELETE CASCADE; json TEXT NOT NULL; updated_at INTEGER NOT NULL |
+| discord_connections | user_id TEXT PK FK users(id) ON DELETE CASCADE; discord_id TEXT NOT NULL UNIQUE; encrypted TEXT NOT NULL; updated_at INTEGER NOT NULL |
+| discord_states | hash TEXT PK; user_id TEXT NOT NULL FK users(id) ON DELETE CASCADE; verifier_enc TEXT NOT NULL; expires_at INTEGER NOT NULL |
+
+Explicit indexes: discord_states_expiry(expires_at), discord_states_owner(user_id). PK/UNIQUE indexes scope playback/user and linked-identity lookups. Hot private queries are owner-keyed; expiry cleanup uses its index. Phone migration preflights existing users/invites, stops on invalid/colliding identities, preserves UUIDs and relationships, normalizes invites and invalidates OTPs. It does not silently merge/reassign accounts. Existing admin/session/Google constraints remain.
+
+### Playback diagnostics/recovery updates
+
+The supplied real trace contains hidden player.playing followed 1.8 seconds later by waiting; see the append-only Hermes correction. Browser handoff now requires at least min(8 seconds, known track length) of contiguous buffered data, not readyState alone. Queue preparation requests with the same window are coalesced. After an 8-second no-progress loading deadline (checked every five seconds), a successful error probe cannot misclassify a stalled element as an unsupported codec. Two position-preserving automatic retries use 500/1000ms delays; pause/skip/logout/transfer cancel them. Hidden-state progress does not depend on a visibilitychange. No JavaScript guarantee is made for an OS-suspended/killed PWA.
+
+Client telemetry adds fixed operation category, safe response requestId and numeric position/buffered/readyState/networkState/mediaCode fields to the existing bounded export/schema. Server events retain trace/request/Ray IDs and resolved IP, including basic failure records. Raw queries/headers/provider text/tokens are excluded. Server startup is one structured stdout event; audit and verbose stages also use stdout. SQLite audit rows, in-memory diagnostics and UI job progress remain by user decision; no application-managed log files are configured. Docker/edge/device records are separate evidence sources.
+
+### Discord runtime contract and limits
+
+The main server encrypts OAuth credentials with owner context discord:<UUID>; state verifier uses discord-state:<UUID>. At most one pending state/owner is retained; expired states are indexed/cleaned. A Discord identity cannot be linked to two Musike owners. Delivery is latest-state coalesced and single-flight per user, capped to 128 tracked users. Paused/nonplaying state clears activity; missing heartbeats clear within 60–75 seconds. The private sidecar requires a >=32-character shared bearer key; tokens cross only that private service boundary. Each SDK process receives an access token through stdin, not argv. Default 16/max64 isolated workers; private HTTP body 16 KiB, 64 connections, 60–70 second expiry. Vendor stdout is parsed into allowlisted state records; provider stderr is not forwarded. No native log directory is configured.
+
+Source OAuth/service tests use injected transports and a mock SDK process. The actual vendor SDK, headless Connect/Ready, application eligibility, Listening rendering and two-user profile acceptance were not available in this workspace and remain pending. No cloud-only all-platform presence guarantee is implied. See services/discord-presence/README.md and docs/HERMES-VERIFICATION.md.

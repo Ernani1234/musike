@@ -11,16 +11,16 @@ below includes reproduction steps and captured evidence.
 |---------|--------------------------------------------------------------------|-----------------------|------------|
 | BUG-001 | yt-dlp stream URLs expire ~3-4s after issuance — proxied streams 403 (upstream #28) | MITIGATED (wrapper) | 2026-11-17 |
 | BUG-002 | Takeout import: 387 not-found (no fuzzy matching) + no live per-item progress | RESOLVED in source; demo rerun pending | 2026-11-18 |
-| BUG-003 | Look-ahead prep not guaranteed on every playback path; cold path stalls | RESOLVED in source; latency demo pending | 2026-11-18 |
+| BUG-003 | Look-ahead prep not guaranteed on every playback path; cold path stalls | CLOSED — source fix accepted by user; regressions retained | 2026-11-18 |
 | BUG-004 | Radio sometimes stalls advancing to next song or errors server unreachable | MITIGATED + INSTRUMENTED; incident verification pending | 2026-11-18 |
-| BUG-005 | yt-dlp wrapper needs whole-file fix beyond BUG-001 mitigation | RESOLVED in wrapper source; deployment check pending | 2026-11-18 |
+| BUG-005 | yt-dlp wrapper needs whole-file fix beyond BUG-001 mitigation | RESOLVED — provisionally accepted by user; wrapper content retained | 2026-11-18 |
 | BUG-006 | Cloudflare Tunnel Optimization Findings for Codex Evaluation | Browser mitigation implemented; edge/device cause unverified | 2026-11-19 |
-| BUG-007 | Locked-screen track transition fails: preload handoff fired, media fetches timed out while hidden (first on-device trace) | OPEN; incident reproduced with instrumentation; delegated to Codex | 2026-11-19 |
-| BUG-008 | Remove desktop/ and mobile/ folders completely (Codex evaluates, Hermes executes) | OPEN; removal instructions delegated to Codex | 2026-11-19 |
-| BUG-009 | Discord Rich Presence for playing state (desktop target being removed) | OPEN; design delegated to Codex | 2026-11-19 |
-| BUG-010 | Logging overhaul: stdout/docker-logs only, no in-app log files; Hermes self-diagnosis | OPEN; redesign delegated to Codex | 2026-11-19 |
-| BUG-011 | Phone number normalization (E.164, +60 default, idempotent backfill) | OPEN; delegated to Codex | 2026-11-19 |
-| BUG-012 | Codex deliverable: Cloudflare + tunnel optimization audit prompt for Hermes | OPEN; prompt authoring delegated to Codex | 2026-11-19 |
+| BUG-007 | Locked-screen track transition fails: preload handoff fired, media fetches timed out while hidden (first on-device trace) | Source repair tested; Samsung/tunnel acceptance pending | 2026-11-19 |
+| BUG-008 | Remove desktop/ and mobile/ folders completely (Codex evaluates, Hermes executes) | Evaluation/runbook delivered; Hermes deletion pending | 2026-11-19 |
+| BUG-009 | Discord Rich Presence for playing state (desktop target being removed) | OAuth/service source delivered; vendor SDK/runtime acceptance pending | 2026-11-19 |
+| BUG-010 | Logging overhaul: stdout/docker-logs only, no in-app log files; Hermes self-diagnosis | RESOLVED in source — stdout diagnostics; audit/progress retained | 2026-11-19 |
+| BUG-011 | Phone number normalization (E.164, +60 default, idempotent backfill) | RESOLVED in source — canonical +60 and backed-up migration | 2026-11-19 |
+| BUG-012 | Codex deliverable: Cloudflare + tunnel optimization audit prompt for Hermes | DELIVERED — audit prompt with approval/rollback gates | 2026-11-19 |
 ---
 
 > Current dispositions are in the index and the dated follow-up below. Original reports retain their historical wording/status as evidence. “Resolved in source” does not certify a live provider, tunnel or physical-device acceptance test.
@@ -506,3 +506,33 @@ Codex must EVALUATE and then write step-by-step removal instructions for HERMES 
 | Date | Actor | Change |
 |------|-------|--------|
 | 2026-11-19 | Hermes agent | Report created (OPEN). Prompt authoring delegated to Codex. |
+
+## Implementation follow-up — BUG-007–012 and device synchronization — 2026-11-19
+
+The user reviewed the architecture/impact questions and explicitly approved implementation, including device sync, authenticated Discord SDK service, Malaysian-only OTP and Hermes-owned platform deletion/live verification. Historical reports above remain unchanged. The index records current dispositions.
+
+### Corrected evidence for BUG-007
+
+The original uploaded `musike-playback-diagnostics.json` contains 48 events. For trace d28b418d-5564-4c33-b720-8f409d014316, **player.playing exists at 05:03:49.368 UTC / 13:03:49.368 MYT while hidden**, after handoff at .322. The player then enters waiting at 05:03:51.179. The incident is a stall after initial playback, not proof that the next song never started. The old http.start events lack operation/path labels; they cannot prove the three failing requests were media transfers. Successful small API requests do not rule out a separate media/transport failure. A same-origin preloaded URL's age is not evidence of an expired YouTube URL, especially with complete server-cached bytes. Origin/tunnel correlation remains pending.
+
+Source fixes require contiguous buffered coverage at handoff, coalesce identical warming requests, record request-purpose and media state, detect no-progress loading and retry twice (500/1000ms) at the same position without waiting for visibility. Pause, skip, logout and transfer cancel retries. Synthetic actual-player fixtures reproduce hidden playing→waiting→recovery and cancellation. Physical Samsung A07 playlist/radio tests on Wi-Fi/data remain necessary; no OS-suspension or Cloudflare root-cause claim is made.
+
+### BUG-008 / BUG-012 deliverables
+
+`docs/PLATFORM-REMOVAL.md` maps exact deletions, Docker/workspace/CI/native-browser wiring edits, lockfile regeneration and acceptance/rollback. Hermes executes separately; folders remain in this delivered revision. `docs/CF-TUNNEL-AUDIT-PROMPT.md` directs read-only inspection and evidence, then exact proposals for Azan approval before any live configuration mutation. Both documentation deliverables are complete; platform execution and edge changes are not claimed.
+
+### BUG-009 / account device synchronization
+
+Added per-owner server playback snapshots, bounded commands/event streams, per-live-document identity, epoch/sequence rejection and explicit silence acknowledgement before transfer. Other devices mirror/control the active output. Opening another tab does not play. Queue/state/shuffle/repeat/radio are shared; volume/theme/media preferences remain local. Unreachable old output cannot be silently forced off, so transfer waits. Normal close sends a small best-effort release; logout waits for acknowledgement.
+
+Discord source adds PKCE/account linking, encrypted refresh lifecycle, unique owner mappings and a private bearer-authenticated service spawning isolated authenticated Social SDK workers. Browser receives no tokens. Pause/stale/disconnect clears presence; absence does not break playback. OAuth tests use mocked providers; sidecar tests use a mock SDK executable. **Official SDK headers/binaries and Developer Portal eligibility were not supplied, so native vendor compilation, headless Ready and real multi-user Discord profile acceptance remain pending.** No bot/local-RPC substitute is asserted to fulfill the chosen integration. See `services/discord-presence/README.md`.
+
+### BUG-010 / BUG-011
+
+Server operational output uses stdout, including structured startup, trace/request/Ray-correlated errors/stages and sanitized audit actions. Existing SQLite security audit history, admin panels and tool progress remain by user decision; no application-managed log-file destination was found or added. Client diagnostic export remains bounded and adds safe fields.
+
+Phone identities normalize to canonical +60; local/international Malaysian variants converge, foreign numbers fail before OTP delivery and wasphere receives digits only. Startup migration preflights invalid/colliding identities, makes consistent worker backups, updates users/invites transactionally and invalidates OTPs. User UUIDs, ownership, roles and libraries are preserved; collisions are never merged automatically. Tests cover equivalence, rejection, backfill/backup, idempotence and failure without identity mutation.
+
+### Dispositions and validation
+
+BUG-002 remains source-resolved with full user import acceptance pending. BUG-003 is closed at the user's instruction. BUG-005 is provisionally accepted with source contents unchanged; executable permission was corrected because the uploaded wrapper was mode 0644 and direct execution failed. BUG-001/004/006 retain mitigation/incident verification status. Exact test/build results and limits are in TEST-RESULTS.md. No production deployment, live Discord/Cloudflare change or platform deletion was performed here.
