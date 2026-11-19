@@ -17,10 +17,12 @@ int main() {
   std::optional<Json> activity;
   std::string token;
   std::string pending;
-  client->SetStatusChangedCallback([&](discordpp::Client::Status status, discordpp::Client::Error, int32_t) {
+  client->SetStatusChangedCallback([&](discordpp::Client::Status status, discordpp::Client::Error error, int32_t code) {
     ready = status == discordpp::Client::Status::Ready;
     changed = true;
-    std::cout << (ready ? "{\"event\":\"discord.sdk.status\",\"ready\":true}" : "{\"event\":\"discord.sdk.status\",\"ready\":false}") << std::endl;
+    Json diag = Json{{"event", "discord.sdk.status"}, {"ready", ready}, {"status", static_cast<int>(status)}, {"error", static_cast<int>(error)}, {"code", code}};
+    if (error != discordpp::Client::Error::None) diag["errorName"] = error;
+    std::cout << diag.dump() << std::endl;
   });
   // Do not enable SDK file logs or serialize its provider messages.
   for (;;) {
