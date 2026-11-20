@@ -31,7 +31,11 @@ const server = createServer(async (req, res) => {
       const a = data.activity;
       if (!a || typeof a.title !== "string" || typeof a.artist !== "string" || !Number.isSafeInteger(a.startedAt) || a.startedAt < 0 ||
         typeof a.artwork !== "string" || a.artwork.length > 500 || a.artwork && !a.artwork.startsWith("https://")) return send(400, { error: "Invalid activity" });
-      activity = { title: a.title.slice(0, 128), artist: a.artist.slice(0, 128), artwork: a.artwork, startedAt: a.startedAt };
+      // Optional fields: older servers omit them and still get the elapsed-only timer.
+      const album = typeof a.album === "string" ? a.album.slice(0, 128) : "";
+      const url = typeof a.url === "string" && a.url.length <= 256 && a.url.startsWith("https://") ? a.url : "";
+      const endsAt = Number.isSafeInteger(a.endsAt) && a.endsAt > a.startedAt ? a.endsAt : 0;
+      activity = { title: a.title.slice(0, 128), artist: a.artist.slice(0, 128), album, artwork: a.artwork, url, startedAt: a.startedAt, endsAt };
     }
     let session = sessions.get(data.user);
     if (!session) {
