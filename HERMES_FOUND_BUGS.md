@@ -782,3 +782,55 @@ The user explicitly changed the phone-edit requirement: **an authenticated admin
 ### Remaining acceptance and earlier items
 
 BUG-002's real failed input rerun remains pending; BUG-003 stays closed and BUG-005 remains provisionally accepted with wrapper content retained and executable permission restored. BUG-001/004/006 retain their existing mitigation/incident status. Exact automated results and environment limitations are in TEST-RESULTS.md. No production deployment, tunnel/WAF change, actual account deletion or operator configuration mutation occurred.
+
+## BUG-018 — Live-jam takeover deadlocked on stale transfer grants (fixed — deployed 2026-11-19, prod @ a67c8db)
+
+**Symptom:** taking over playback on a second device while the first was still playing produced a raw JSON parse-error toast and broke the jam until reload/rejoin (2 devices, ~100% repro). The takeover user also had no next/prev control.
+
+**Root cause chain (confirmed from source):**
+1. Server `claim` re-stamped `transferAt` on every same-device retry, so the 30s `reconcile` expiry never fired → stale `room.transfer` blocked all claims/commands with 409s until reload.
+2. Transfer grant required the old devices
+
+## BUG-018 — Live-jam takeover deadlocked on stale transfer grants (fixed — deployed 2026-11-19, prod @ a67c8db)
+
+**Symptom:** taking over playback on a second device while the first was still playing produced a raw JSON parse-error toast and broke the jam until reload/rejoin (2 devices, ~100% repro). The takeover user also had no next/prev control.
+
+**Root cause chain (confirmed from source):**
+1. Server `claim` re-stamped `transferAt` on every same-device retry, so the 30s `reconcile` expiry never fired — stale `room.transfer` blocked all claims/commands with 409s until reload.
+2. Transfer grant required the old device's ack snapshot to report `paused`, but `suspendOutput()`'s status flip is an async audio event — the immediate ack snapshotted `playing` and the grant was refused, ping-ponging forever.
+3. One malformed SSE frame tore down the whole sync connection (unguarded `JSON.parse`) into a 3s reconnect loop.
+4. Bare `response.json()` in `accountRequest` surfaced the raw `SyntaxError` as the user-visible toast.
+5. Guest allowlist in `server/src/jams.ts` only permitted `addToQueue`/`playNext` — `next`/`prev` got 403 "Only the host controls playback" even with `guest_controls` off.
+
+**Fix (8 files, commit a67c8db):** server claim expires transfers after ~10s and no longer re-stamps the clock on re-claim; client ack snapshot forces `paused` when `pausedForTransfer`; SSE frames wrapped in per-event try/catch; `accountRequest` guards the JSON parse and errors carry `.status`; `playJamHere` waits bounded ~12s for the grant before binding `/output` and toasts `transferPending` on timeout; jam commands retry once on 409 with a refreshed view; guest allowlist adds `next`/`prev`; `transferPending` i18n key added.
+
+**Verification:** server tests 117 pass / 0 fail; `tsc --noEmit` clean; prod rebuilt and healthy on `musike-prod:local-a67c8db` (local + public 200). Live 2-browser takeover repro + guest next/prev still to be confirmed manually by the operator.
+
+## BUG-019 — Library top-nav redundant DatabaseIcon backup button (fixed — deployed 2026-11-19, prod @ a67c8db)
+
+Redundant with the pending settings-removal decision (operator-approved). Button, icon import and `setSettingsOpen` usage removed from `web/src/views/Library.tsx`.
+
+## BUG-020 — Playlist import dialog unscrollable on mobile viewport (fixed — deployed 2026-11-19, prod @ a67c8db)
+
+The `Modal` panel had no max-height or scroll: tall content (import report header + summary + entry list) overflowed off-screen on phone viewports. `web/src/components/Modal.tsx` panel is now `max-h-[88dvh]` flex-column with a scrollable, overscroll-contained body — fixes all dialogs, not just the import one.
+
+## BUG-021 — OPEN (Codex handoff): JSON toast still fires on every media-control interaction; "Converting circular structure to JSON" from SVG React fiber nodes (reported 2026-11-19, prod @ a67c8db)
+
+**Operator report after the BUG-018 fix deploy:** transfer/takeover improved, but a JSON error toast still appears on media-control use. This is a Codex handoff entry — investigate and fix; do NOT revert the BUG-018 patches (tests 117 pass / 0 fail, typecheck clean, both devices confirmed hard-refreshed onto the new client bundle).
+
+**Observed:**
+- Error fires on ANY media-control interaction (play, next, prev) from EITHER device in a live jam — not only during takeover.
+- Error text (verbatim from operator): "Converting circular structure to JSON --> starting at object with constructor 'SVGPathElement' | property '__reactFiber$kcfdn3r52ds' -> object with constructor 'zi' --- property 'stateNode' closes the circle" (same message repeated with 'SVGSVGElement').
+- "Audio Video Devices" is the surrounding UI context the operator associated with the error; exact trigger point unconfirmed — operator saw it "just appear" on control interaction.
+- Both devices on bundle `local-a67c8db`. No console stack traces collected (operator declined; Codex must repro locally).
+
+**Analysis leads for Codex (NOT verified — starting points):**
+- The circular object is a React fiber-linked SVG DOM node, so a non-serializable value (event object, DOM element, or React component instance) is reaching a `JSON.stringify` path. Candidate sites:
+  1. Jam command path: `setJamControl` / `playJamHere` in `web/src/lib/jams.ts` — an `args` array or command payload carrying a non-serializable value into `accountRequest`; the parse/serialize guard added in a67c8db may now be surfacing it as the toast.
+  2. SSE receive path in `web/src/lib/playbackSync.ts` — `receive()` payload contamination.
+  3. Toast call sites passing an Error/ReactNode where `toast()` expects a string, possibly with an "Audio Video Devices" title (devices panel in `PlaybackDevices`/settings).
+- The minified constructor `zi` indicates a shared production-bundle component; reproduce on a dev build for the real name.
+- Distinguish the toast variant: if it shows the app's `unexpectedResponse` wording, the failure is on the send path (request body serialization); if it shows the raw "Converting circular structure" string, it may be a different catch site. Compare both.
+- Suggested repro: 2 devices in one jam on a dev build, press play from each device, capture the console stack.
+
+**Scope:** live jam media controls. Operator accepts current takeover behavior otherwise. Do the heavy lifting: dev-build repro, stack trace, root cause, fix, tests. Deploy per the standing demo-first cycle (demo spun 1:1 from prod, verified, prod after operator sign-off).
