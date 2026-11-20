@@ -80,7 +80,7 @@ export function QueueList({ compact = false }: { compact?: boolean }) {
             {t.queue.upNext} <span className="font-mono">{upcoming.length}</span>
           </h3>
           {upcoming.length > 0 && (
-            <button type="button" onClick={clearUpcoming} className="text-xs font-medium text-fg-2 hover:text-fg">
+            <button type="button" onClick={() => clearUpcoming()} className="text-xs font-medium text-fg-2 hover:text-fg">
               {t.queue.clear}
             </button>
           )}

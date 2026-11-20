@@ -81,16 +81,25 @@ test("playlist/album/import playList, manual edits, jumps, shuffle and repeat re
     p().clearUpcoming(); await f.tick(); assert.equal(f.h.prepares.at(-1).ids[0], p().queue[0].id); // repeat-all still wraps
   } finally { await f.cleanup(); }
 });
-test("prepared browser element hands off on ended without issuing the next media URL again", async () => {
+test("hidden ended and manual next retain the same authorised audio element and Media Session", async () => {
   const f = await harness(); const p = () => f.player.getState();
   try {
     p().setAutoRadio(false); p().playList([track(1), track(2), track(3)]); await f.tick();
-    assert.equal(f.h.sources.filter((src: string) => src.includes(track(2).id)).length, 1);
-    f.h.elements[0].emit("ended"); await f.tick();
+    const audio = f.h.elements[0];
+    f.document.visibilityState = "hidden";
+    audio.emit("ended");
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+    f.h.handlers.get("play")(); // Idempotent while loading; must not cancel this handoff.
+    await f.tick();
     assert.equal(p().index, 1); assert.equal(p().status, "playing");
-    assert.equal(f.h.sources.filter((src: string) => src.includes(track(2).id)).length, 1);
-    f.document.visibilityState = "hidden"; f.document.dispatchEvent(new Event("visibilitychange")); await f.tick();
-    f.h.elements[1].emit("ended"); await f.tick(); assert.equal(p().index, 2);
+    assert.ok(audio.src.includes(track(2).id));
+    f.h.handlers.get("nexttrack")(); await f.tick();
+    assert.equal(p().index, 2); assert.ok(audio.src.includes(track(3).id));
+    assert.equal(f.h.elements.filter((m: any) => m !== audio && !m.paused).length, 0);
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+    p().prev(); f.h.handlers.get("pause")(); await f.tick();
+    assert.equal(p().status, "paused"); assert.equal(navigator.mediaSession.playbackState, "paused");
+    f.h.handlers.get("play")(); await f.tick(); assert.equal(p().status, "playing");
   } finally { await f.cleanup(); }
 });
 test("radio stale responses cannot replace manual intent and authentication errors are surfaced", async () => {
@@ -120,13 +129,14 @@ test("two transient retries allow one fresh foreground recovery; deliberate paus
   } finally { await f.cleanup(); }
 });
 
-test("a rejected spare-element autoplay falls back to the previously authorised player", async () => {
+test("blocked autoplay reports paused without switching to an unauthorised spare", async () => {
   const f = await harness(); const p = () => f.player.getState();
   try {
     p().setAutoRadio(false); p().playList([track(1), track(2)]); await f.tick();
-    f.h.elements[1].rejectPlay = true;
+    f.h.elements[0].rejectPlay = true;
     f.h.elements[0].emit("ended"); await f.tick();
-    assert.equal(p().index, 1); assert.equal(p().status, "playing");
+    assert.equal(p().index, 1); assert.equal(p().status, "paused");
+    assert.equal(navigator.mediaSession.playbackState, "paused");
     assert.ok(f.h.elements[0].src.includes(track(2).id));
   } finally { await f.cleanup(); }
 });
@@ -137,7 +147,7 @@ test("hidden playback that starts then stalls recovers without unlock, preservin
     p().setAutoRadio(false); p().playList([track(1), track(2)]); await f.tick();
     f.document.visibilityState = "hidden";
     f.h.elements[0].emit("ended"); await f.tick();
-    const active = f.h.elements[1]; active.currentTime = 1.8; active.emit("timeupdate"); active.emit("waiting");
+    const active = f.h.elements[0]; active.currentTime = 1.8; active.emit("timeupdate"); active.emit("waiting");
     f.h.errors = { message: "Browser cannot play", failure: undefined };
     Date.now = () => now() + 10000;
     f.h.intervals.find((t: any) => t.ms === 5000).run(); await f.tick();

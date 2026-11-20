@@ -1,4 +1,5 @@
 import { beginPlaybackTrace, playbackTrace, recordPlayback, responseFailure, configurePlaybackDiagnostics, type FailureKind } from "./playbackDiagnostics";
+import { useSession } from "../stores/session";
 import { getLang, getT } from "../i18n";
 import {
   ApiError,
@@ -24,6 +25,7 @@ const failureText = (failure: FailureKind) => {
   return failure === "authentication" ? f.authExpired : failure === "edge_challenge" ? f.edgeChallenge : failure === "timeout" ? f.networkTimeout : failure === "unexpected_response" ? f.unexpectedResponse : failure === "server" ? f.originFailure : f.networkFailure;
 };
 async function request<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
+  if (useSession.getState().offline) throw new ApiError(0, getT().offline.onlineRequired, undefined, "network");
   const { json, ...rest } = init ?? {}; const started = Date.now(); const trace = playbackTrace() || beginPlaybackTrace();
   // Only fixed route categories, never queries, provider URLs or user-controlled path segments.
   const operation = path.startsWith("/api/queue/") ? "queue.prepare" : path.startsWith("/api/history") ? "library.history" :
@@ -44,13 +46,13 @@ async function request<T>(path: string, init?: RequestInit & { json?: unknown })
   }
   recordPlayback("http.response", { traceId: trace, operation, requestId: res.headers.get("x-musike-request-id") ?? undefined, status: res.status, ms: Date.now() - started, edgeRay: res.headers.get("cf-ray") ?? undefined });
   if (res.status === 204) return undefined as T;
+  if (res.status === 401) window.dispatchEvent(new Event("musike:unauthorized"));
   const failure = responseFailure(res);
   if (failure && !res.headers.get("content-type")?.includes("json")) {
     await res.body?.cancel(); recordPlayback("http.error", { traceId: trace, reason: failure, status: res.status });
     throw new ApiError(res.status, failureText(failure), undefined, failure, trace);
   }
   const body = await res.json().catch(() => null);
-  if (res.status === 401) window.dispatchEvent(new Event("musike:unauthorized"));
   if (!body) throw new ApiError(res.status, failureText("unexpected_response"), undefined, "unexpected_response", trace);
   if (!res.ok) throw new ApiError(res.status, body.error ?? getT().player.httpError(res.status), body.code, failure ?? undefined, trace);
   return body as T;
@@ -143,6 +145,7 @@ export async function explainStreamError(url: string, mediaCode?: number): Promi
   try {
     const probe = new URL(url, location.href); probe.searchParams.set("probe", "1");
     const res = await fetch(probe, { redirect: "manual", credentials: "same-origin", signal: AbortSignal.timeout(8000), headers: { [LANG_HEADER]: getLang() } });
+    if (res.status === 401) window.dispatchEvent(new Event("musike:unauthorized"));
     const failure = responseFailure(res);
     if (!res.headers.get("content-type")?.includes("json")) {
       await res.body?.cancel(); const kind = failure ?? "unexpected_response";
@@ -150,7 +153,6 @@ export async function explainStreamError(url: string, mediaCode?: number): Promi
       return { message: failureText(kind), failure: kind };
     }
     const body = await res.json().catch(() => ({}));
-    if (res.status === 401) window.dispatchEvent(new Event("musike:unauthorized"));
     if (res.ok) return mediaCode === 2 ? { message: failureText("network"), failure: "network" } : { message: t.player.browserCantPlay };
     recordPlayback("media.probe_error", { status: res.status, reason: failure ?? "server", edgeRay: res.headers.get("cf-ray") ?? undefined });
     return { message: body.error ?? failureText(failure ?? "server"), code: body.code, failure: failure ?? undefined };

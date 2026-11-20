@@ -1,3 +1,5 @@
+import OfflineLibrary from "./views/OfflineLibrary";
+import { OfflineExperience } from "./views/OfflineLibrary";
 import { startJams } from "./lib/jams";
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
@@ -38,6 +40,10 @@ const Search = lazy(() => import("./views/Search"));
 const SHEET_HASH = `#${NOW_PLAYING_HASH}`;
 
 export default function App() {
+  const offline = useSession(s => s.offline);
+  return offline ? <OfflineExperience /> : <OnlineApp />;
+}
+function OnlineApp() {
   const session = useSession();
   useEffect(() => {
     if (session.enabled && session.user) { const stopSync = startPlaybackSync(usePlayer); const stopJams = startJams(); return () => { stopJams(); stopSync(); }; }
@@ -111,6 +117,7 @@ export default function App() {
             <Navigate to={legacy} replace />
           ) : (
             <Routes>
+              <Route path={paths.offline} element={<OfflineLibrary />} />
               <Route path={paths.home} element={<Home />} />
               <Route path={paths.search} element={<Search />} />
               <Route path={paths.searchList} element={<BatchSearch />} />

@@ -11,6 +11,8 @@ import "./tv/tv.css";
 import { installTvMode } from "./tv/tvMode";
 
 registerSW({ immediate: true });
+// Target only the obsolete opaque artwork cache; preserve downloads, preferences and accounts.
+if ("caches" in window) void caches.delete("artwork").catch(() => {});
 
 // Browser TV mode: spatial D-pad navigation and TV styling (no-op elsewhere).
 installTvMode();

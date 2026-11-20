@@ -1,10 +1,13 @@
+import { mediaMetadata, mediaPlaybackState, registerMediaActions } from "../lib/mediaSession";
+import { cacheRecentAudio, offlineAudioBlob, offlineAudioUrl, retainPreloadedAudio, touchDownloadedAudio } from "../lib/offlineDownloads";
+import { useSession } from "../stores/session";
 import { PlaybackPreload } from "../lib/playbackPreload";
 import { create } from "zustand";
 import { getT, useT } from "../i18n";
 import { api, capabilities, explainStreamError, saveFile, streamSource, systemMedia, type ApiError, type ErrorCode } from "../lib/api";
 import { beginPlaybackTrace, recordPlayback, playbackEvents, flushPlaybackEvents, type FailureKind } from "../lib/playbackDiagnostics";
 import { recoverableFailure, requestRadio } from "../lib/playbackRecovery";
-import { createAudio, createUpcomingAudio } from "../lib/audio";
+import { createAudio } from "../lib/audio";
 import { shuffled } from "../lib/format";
 import type { Track } from "../lib/types";
 import { playerWriter, type SavedPlayer as Saved } from "../lib/playerPersistence";
@@ -75,14 +78,15 @@ export interface PlayerState {
 
 // Media elements live outside React so playback survives any re-render or route change.
 // On iOS this is the native player behind the same API (see lib/audio.ts).
-let audio = createAudio();
-let spareAudio = createUpcomingAudio();
-let preloaded: { id: string; trace: string } | null = null;
+const audio = createAudio();
 let resumeWanted = false;
 let lastFailure: FailureKind | undefined;
 let recoveryCount = 0;
 let unlockRecoveryUsed = false;
-const completePreload = new PlaybackPreload();
+const completePreload = new PlaybackPreload(fetch, 16 * 1024 * 1024, (id, blob) => {
+  const track = usePlayer.getState().queue.find(t => t.id === id);
+  if (track) void retainPreloadedAudio(track, blob);
+}, offlineAudioBlob);
 let activeBlob: string | null = null;
 let recoveryId = "";
 
@@ -159,7 +163,7 @@ const needsClipLookup = (track: Track, preferVideo: boolean) =>
 
 export const usePlayer = create<PlayerState>((set, get) => {
   const kindFor = (track: Track): Kind =>
-    capabilities.video && get().preferVideo && (track.kind === "video" || !!clipFor.get(track.id)) ? "video" : "audio";
+    !useSession.getState().offline && capabilities.video && get().preferVideo && (track.kind === "video" || !!clipFor.get(track.id)) ? "video" : "audio";
   /** The YouTube id to stream: the song itself, or its music video in Video mode. */
   const mediaIdFor = (track: Track, kind: Kind) =>
     kind === "video" && track.kind !== "video" ? clipFor.get(track.id)! : track.id;
@@ -171,7 +175,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     const mine = token;
     media.play().catch((err: DOMException) => {
       if (mine !== token || err.name === "AbortError") return; // src changed mid-start
-      if (err.name === "NotAllowedError") { if (fallback) fallback(); else set({ status: "paused" }); } // autoplay blocked
+      if (err.name === "NotAllowedError") { if (fallback) fallback(); else { resumeWanted = false; set({ status: "paused" }); } } // autoplay blocked
     });
   }
 
@@ -184,16 +188,14 @@ export const usePlayer = create<PlayerState>((set, get) => {
     if (!track) return;
     if (recoveryId !== track.id) { recoveryId = track.id; recoveryCount = 0; unlockRecoveryUsed = false; }
     resumeWanted = opts.autoplay !== false;
-    const reusable = !opts.disablePreload && !s.preferVideo && preloaded?.id === track.id && spareAudio && spareAudio.readyState >= 2 && !spareAudio.error &&
-      mediaFields(spareAudio).buffered >= Math.min(8, Math.max(1, track.duration || 8));
-    const complete = !opts.disablePreload && !s.preferVideo ? completePreload.take(track.id) : null;
+    const offline = !!useSession.getState().offline;
+    const complete = !opts.disablePreload && (!s.preferVideo || offline) ? completePreload.take(track.id) : null;
     completePreload.retain();
-    if (preloaded?.id === track.id && !reusable && !complete) recordPlayback("player.preload_skipped", { videoId: track.id, reason: "insufficient_buffer", ...(spareAudio ? mediaFields(spareAudio) : {}) });
-    const trace = complete?.trace ?? (reusable ? preloaded!.trace : undefined);
+    const trace = complete?.trace;
     beginPlaybackTrace(trace); recordPlayback("player.load", { videoId: track.id });
 
     // Video mode on a song: find its music video first, then load whichever fits.
-    if (needsClipLookup(track, s.preferVideo)) {
+    if (!offline && needsClipLookup(track, s.preferVideo)) {
       const mine = ++token;
       set({
         index,
@@ -211,10 +213,6 @@ export const usePlayer = create<PlayerState>((set, get) => {
     }
 
     const kind = kindFor(track);
-    if (kind === "audio" && !complete && reusable && spareAudio) {
-      audio.pause(); const previous = audio; audio = spareAudio; spareAudio = previous; preloaded = null;
-      spareAudio.removeAttribute("src"); spareAudio.load(); recordPlayback("player.preloaded_handoff", { videoId: track.id, ...mediaFields(audio) });
-    }
     const media = mediaFor(kind);
     const other = mediaFor(kind === "video" ? "audio" : "video");
     other.pause();
@@ -245,33 +243,28 @@ export const usePlayer = create<PlayerState>((set, get) => {
       if (autoplay) play(media);
     };
     // The server's proxy URL is known right away; on Android the stream is first resolved on the phone.
-    const sourceToken = token;
-    const fallback = () => {
-      if (sourceToken !== token || !spareAudio) return;
-      const previous = audio; audio = spareAudio; spareAudio = previous; preloaded = null;
-      load(index, { ...opts, disablePreload: true });
-    };
-    if (!complete && reusable && kind === "audio") {
-      if (pendingSeek > 0) { media.currentTime = pendingSeek; pendingSeek = 0; }
-      if (Number.isFinite(media.duration)) set({ duration: media.duration });
-      if (autoplay) play(media, fallback);
-      setMetadata(track); return;
-    }
     if (activeBlob) { URL.revokeObjectURL(activeBlob); activeBlob = null; }
     if (complete && kind === "audio") {
       activeBlob = complete.url; start(complete.url);
       recordPlayback("player.complete_handoff", { videoId: track.id, traceId: complete.trace });
       setMetadata(track); return;
     }
-    const source = streamSource(mediaIdFor(track, kind), kind, s.quality);
-    if (typeof source === "string") start(source);
-    else {
-      const mine = token;
-      source.then(
-        (src) => mine === token && start(src),
-        (err: ApiError) => mine === token && report(err.message, err.code),
-      );
-    }
+    const mine = token;
+    const network = () => {
+      if (offline) { resumeWanted = false; set({ status: "paused", statusText: { error: getT().offline.unavailable } }); return; }
+      const source = streamSource(mediaIdFor(track, kind), kind, s.quality);
+      if (typeof source === "string") start(source);
+      else source.then(src => mine === token && start(src), (err: ApiError) => mine === token && report(err.message, err.code));
+    };
+    // Locked transitions keep a synchronous source/play path. Persistent next-track bytes
+    // are loaded by warmQueue while the current track is still playing.
+    if (kind === "audio" && sessionStorage.getItem("musike:user") && (offline || navigator.userActivation?.isActive)) {
+      void offlineAudioUrl(track.id).then(url => {
+        if (mine !== token) { if (url) URL.revokeObjectURL(url); return; }
+        if (url) { activeBlob = url; start(url); void touchDownloadedAudio(track.id); }
+        else network();
+      });
+    } else network();
     setMetadata(track);
   }
 
@@ -286,7 +279,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
   function primeRadio(force = false): Promise<void> {
     const s = get();
     if (radioJob && radioJob.queue !== s.queue) { radioJob.controller.abort(); radioJob = null; }
-    if (!s.autoRadio || s.repeat !== "off" || sessionLost) { radioJob?.controller.abort(); return Promise.resolve(); }
+    if (useSession.getState().offline || !s.autoRadio || s.repeat !== "off" || sessionLost) { radioJob?.controller.abort(); return Promise.resolve(); }
     if (radioJob) return radioJob.promise;
     if (!force && (lookahead === 0 || s.queue.length - s.index - 1 >= lookahead)) return Promise.resolve();
     if (radioAttempt?.queue === s.queue && Date.now() - radioAttempt.at < (radioAttempt.failed && force ? 2000 : 30_000)) return Promise.resolve();
@@ -320,33 +313,28 @@ export const usePlayer = create<PlayerState>((set, get) => {
   }
 
   function warmQueue() {
-    if (!playbackCanOutput()) return;
+    if (!playbackCanOutput() || useSession.getState().offline) return;
     const s = get();
     if (radioJob && (radioJob.queue !== s.queue || !s.autoRadio || s.repeat !== "off")) { radioJob.controller.abort(); radioJob = null; }
     const current = s.queue[s.index];
     const upcoming = upcomingTracks(s.queue, s.index, 10, s.repeat);
     completePreload.retain(!s.preferVideo && lookahead > 0 ? upcoming[0]?.id : undefined);
-    if (preloaded && (preloaded.id !== upcoming[0]?.id || s.preferVideo || lookahead === 0)) {
-      spareAudio?.removeAttribute("src"); spareAudio?.load(); preloaded = null;
-    }
     if (sessionLost || !current || (s.status !== "playing" && s.status !== "loading")) return;
     const queue = s.queue; const index = s.index;
+    const nearest = upcoming[0];
+    if (lookahead > 0 && nearest && !s.preferVideo) void completePreload.hydrate(nearest.id, crypto.randomUUID());
     const signature = `${current.id}:${upcoming.map((track) => track.id).join(",")}:${s.preferVideo}`;
     if (api.prefetch && warming === signature) return;
     if (api.prefetch) { warming = signature; void api.prefetch(current.id, upcoming.map((track) => track.id)).then((result) => {
       if (sessionLost || get().queue !== queue || get().index !== index) return;
       if (result) lookahead = result.lookahead;
       const next = upcoming[0];
-      if (lookahead > 0 && next && !s.preferVideo && spareAudio && result?.readyIds?.includes(next.id)) {
-        if (preloaded?.id !== next.id) {
-          const trace = crypto.randomUUID(); preloaded = { id: next.id, trace };
-          const source = streamSource(next.id, "audio", s.quality, trace);
-          if (typeof source === "string") { void completePreload.prepare(next.id, source, trace); spareAudio.src = source; spareAudio.load(); recordPlayback("player.preload", { videoId: next.id, traceId: trace }); }
-        }
-        const readySource = streamSource(next.id, "audio", s.quality, preloaded?.trace);
-        if (typeof readySource === "string") void completePreload.prepare(next.id, readySource, preloaded?.trace ?? crypto.randomUUID());
+      if (lookahead > 0 && next && !s.preferVideo && result?.readyIds?.includes(next.id)) {
+        const trace = crypto.randomUUID();
+        const source = streamSource(next.id, "audio", s.quality, trace);
+        if (typeof source === "string") void completePreload.prepare(next.id, source, trace);
         warmRetries = 0;
-      } else if (lookahead > 0 && next && spareAudio && !s.preferVideo && warmRetries++ < 10 && !warmTimer) {
+      } else if (lookahead > 0 && next && !s.preferVideo && warmRetries++ < 10 && !warmTimer) {
         warmTimer = setTimeout(() => { warmTimer = null; warmQueue(); }, 1500);
       }
       void primeRadio();
@@ -363,7 +351,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
     if (!track || recordedToken === token) return;
     recordedToken = token; lastFailure = undefined;
     recordPlayback("player.playing", { videoId: track.id });
-    useLibrary.getState().recordPlay(track);
+    if (!useSession.getState().offline) { useLibrary.getState().recordPlay(track); if (s.mediaKind === "audio") cacheRecentAudio(track); }
+    else void touchDownloadedAudio(track.id);
     warmQueue();
   }
 
@@ -381,7 +370,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     }
     if (s.index < s.queue.length - 1) return load(s.index + 1);
     if (s.repeat === "all" && s.queue.length) return load(0);
-    if (s.autoRadio) return void continueWithRadio();
+    if (s.autoRadio && !useSession.getState().offline) return void continueWithRadio();
     set({ status: "paused", position: 0 });
   }
 
@@ -410,6 +399,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
   let probingToken = -1;
 
   function onError(media: HTMLMediaElement, stalled = false) {
+    if (useSession.getState().offline) { resumeWanted = false; set({ status: "paused", statusText: { error: getT().offline.unavailable } }); return; }
     const mine = token;
     if (probingToken === mine) return;
     const url = media.currentSrc || media.src;
@@ -459,14 +449,14 @@ export const usePlayer = create<PlayerState>((set, get) => {
       if (isActive() && Number.isFinite(media.duration)) set({ duration: media.duration });
     });
     media.addEventListener("playing", () => {
-      if (!isActive()) return;
+      if (!isActive() || media.paused) return;
       loadingAt = Date.now(); set({ status: "playing", statusText: null });
       onStarted();
       syncPlaybackState();
     });
     media.addEventListener("pause", () => {
       if (!isActive() || media.ended || get().status === "loading" || get().status === "error") return;
-      set({ status: "paused" });
+      resumeWanted = false; set({ status: "paused" });
       syncPlaybackState();
     });
     media.addEventListener("waiting", () => {
@@ -486,7 +476,6 @@ export const usePlayer = create<PlayerState>((set, get) => {
     media.addEventListener("error", () => isActive() && media.getAttribute("src") && onError(media));
   }
   wire(audio);
-  if (spareAudio) wire(spareAudio);
   wire(videoEl);
 
   const reloadIfKindChanged = () => {
@@ -608,8 +597,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
     toggle: () => {
       const s = get();
       if (retryTimer || s.status === "loading" && resumeWanted) {
-        completePreload.clear(); if (activeBlob) { URL.revokeObjectURL(activeBlob); activeBlob = null; }
-      cancelRetry(); resumeWanted = false; token++; activeMedia()?.pause(); set({ status: "paused", statusText: null }); return;
+        completePreload.clear();
+        cancelRetry(); resumeWanted = false; token++; activeMedia()?.pause(); loaded = null; set({ status: "paused", statusText: null }); return;
       }
       const track = s.queue[s.index];
       if (!track) return;
@@ -619,7 +608,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
         loaded.id !== track.id ||
         loaded.kind !== kind ||
         (kind === "video" && loaded.quality !== s.quality) ||
-        needsClipLookup(track, s.preferVideo);
+        !useSession.getState().offline && needsClipLookup(track, s.preferVideo);
       if (stale || s.status === "error") return load(s.index, { startAt: s.position });
       const media = mediaFor(kind);
       if (media.paused) { resumeWanted = true; play(media); }
@@ -687,7 +676,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     },
 
     setPreferVideo: (on) => {
-      if (on && !capabilities.video) return;
+      if (on && (!capabilities.video || useSession.getState().offline)) return;
       set({ preferVideo: on });
       reloadIfKindChanged();
     },
@@ -701,10 +690,10 @@ export const usePlayer = create<PlayerState>((set, get) => {
     setAutoRadio: (autoRadio) => set({ autoRadio }),
     suspendOutput: () => {
       completePreload.clear(); if (activeBlob) { URL.revokeObjectURL(activeBlob); activeBlob = null; }
-      cancelRetry(); resumeWanted = false; token++; loaded = null; pendingSeek = 0; preloaded = null;
+      cancelRetry(); resumeWanted = false; token++; loaded = null; pendingSeek = 0;
       radioJob?.controller.abort(); manualRadio?.abort();
       if (warmTimer) { clearTimeout(warmTimer); warmTimer = null; }
-      for (const media of [audio, videoEl, ...(spareAudio ? [spareAudio] : [])]) { media.pause(); media.removeAttribute("src"); media.load(); }
+      for (const media of [audio, videoEl]) { media.pause(); media.removeAttribute("src"); media.load(); }
       set({ status: get().queue.length ? "paused" : "idle", statusText: null, buffered: 0 });
       syncPlaybackState();
     },
@@ -716,8 +705,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
     stopSession: () => {
       cancelRetry();
       completePreload.clear(); if (activeBlob) { URL.revokeObjectURL(activeBlob); activeBlob = null; }
-      radioJob?.controller.abort(); manualRadio?.abort(); if (warmTimer) clearTimeout(warmTimer); token++; loaded = null; resumeWanted = false; preloaded = null;
-      for (const media of [audio, videoEl, ...(spareAudio ? [spareAudio] : [])]) { media.pause(); media.removeAttribute("src"); media.load(); }
+      radioJob?.controller.abort(); manualRadio?.abort(); if (warmTimer) clearTimeout(warmTimer); token++; loaded = null; resumeWanted = false;
+      for (const media of [audio, videoEl]) { media.pause(); media.removeAttribute("src"); media.load(); }
       set({ queue: [], original: null, index: 0, status: "idle", statusText: null, position: 0, duration: 0, buffered: 0 });
       systemMedia?.setState({ playing: false, position: 0, duration: 0 });
       if ("mediaSession" in navigator) { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = "none"; }
@@ -746,6 +735,7 @@ function persist() {
 setInterval(persist, 4000);
 // Queue edits (including optimistic/manual additions) refresh look-ahead without waiting for another playing event.
 usePlayer.subscribe((state, previous) => {
+  if (state.status !== previous.status || state.index !== previous.index) syncPlaybackState();
   if (state.queue !== previous.queue || state.index !== previous.index || state.autoRadio !== previous.autoRadio || state.repeat !== previous.repeat)
     queueMicrotask(() => usePlayer.getState().warmUpcoming());
 });
@@ -785,18 +775,7 @@ setInterval(() => {
 function setMetadata(track: Track) {
   systemMedia?.setTrack({ title: track.title, artist: track.artist, album: track.album ?? "", artwork: track.art || track.thumb });
   if (!("mediaSession" in navigator)) return;
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: track.title,
-    artist: track.artist,
-    album: track.album ?? "",
-    artwork:
-      track.kind === "video"
-        ? [
-            { src: track.art, sizes: "1280x720", type: "image/jpeg" },
-            { src: track.thumb, sizes: "320x180", type: "image/jpeg" },
-          ]
-        : [{ src: track.art, sizes: "544x544", type: "image/jpeg" }],
-  });
+  try { navigator.mediaSession.metadata = new MediaMetadata(mediaMetadata(track)); } catch { /* Browser may reject remote artwork. Audio remains usable. */ }
 }
 
 /** The phone's notification and lock screen. A track that is loading is about to play, so it counts as playing:
@@ -810,7 +789,8 @@ function syncSystemMedia() {
 function syncPlaybackState() {
   syncSystemMedia();
   if (!("mediaSession" in navigator)) return;
-  navigator.mediaSession.playbackState = usePlayer.getState().status === "playing" ? "playing" : "paused";
+  const s = usePlayer.getState();
+  navigator.mediaSession.playbackState = mediaPlaybackState(s.status, resumeWanted, !!s.queue[s.index]);
   syncPositionState();
 }
 
@@ -838,24 +818,7 @@ if (systemMedia) {
 }
 
 if ("mediaSession" in navigator) {
-  const ms = navigator.mediaSession;
-  const p = () => usePlayer.getState();
-  const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
-    ["play", () => p().status !== "playing" && p().toggle()],
-    ["pause", () => p().status === "playing" && p().toggle()],
-    ["previoustrack", () => p().prev()],
-    ["nexttrack", () => p().next()],
-    ["seekto", (d) => d.seekTime != null && p().seek(d.seekTime)],
-    ["seekbackward", (d) => p().seek(p().position - (d.seekOffset ?? 10))],
-    ["seekforward", (d) => p().seek(p().position + (d.seekOffset ?? 10))],
-  ];
-  for (const [action, handler] of handlers) {
-    try {
-      ms.setActionHandler(action, handler);
-    } catch {
-      /* action not supported */
-    }
-  }
+  registerMediaActions(navigator.mediaSession, () => usePlayer.getState());
   const restored = selectCurrent(usePlayer.getState());
   if (restored) setMetadata(restored);
 }

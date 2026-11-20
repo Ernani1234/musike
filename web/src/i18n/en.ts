@@ -6,6 +6,22 @@
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export const en = {
+  offline: {
+    title: "Offline audio", open: "Downloads", enable: "Enable audio caching", disable: "Pause caching", budget: "Audio storage budget",
+    notice: "Downloads use your current Wi-Fi or mobile data. Audio only, including audio from YouTube videos. Shared playlists need a personal copy before downloading.",
+    audioUsage: "Downloaded audio", siteUsage: "Estimated total site storage", siteNote: "The site estimate includes artwork, app files and other browser data; it is not the audio total.",
+    persistence: "Browser persistence granted", temporary: "Browser persistence not granted; the browser may remove downloads.",
+    storageUnavailable: "Offline storage is unavailable. Check browser storage permissions and available space.",
+    enableFirst: "Choose a budget and enable audio caching first.", budgetFull: "Pinned audio fills this budget. Downloads paused; increase the budget or unpin a playlist.",
+    incomplete: "Download incomplete. Check your connection and free storage, then resume.",
+    download: "Download audio", update: "Download updates", updatesAvailable: "Updates available", resume: "Resume download", remove: "Unpin", ready: "Downloaded",
+    pending: "Incomplete", recent: "Recently played audio", clear: "Clear unpinned audio", cancel: "Pause downloads", empty: "No audio downloaded yet.",
+    mode: "Offline · downloads only", reconnect: "Reconnect", onlineRequired: "Connect to use this feature.",
+    outputBlocked: "This installation was not the last designated audio output. Connect and choose Play here first.",
+    tabBlocked: "Another tab is using this account’s offline audio output. Close it before playing here.",
+    unavailable: "This track has not finished downloading.", saveCopy: "Save a personal copy before downloading a shared playlist.",
+    importTitle: "Import playlist", importShort: "Import", url: "Playlist link", destination: "Save to", newPlaylist: "New playlist / previous import", startImport: "Start import",
+  },
   collaboration: {
     youtubePlaylist: "YouTube playlist",
     status: { queued: "Queued", running: "Importing", interrupted: "Interrupted", cancelled: "Cancelled", partial: "Partial", done: "Complete", pending: "Pending", added: "Imported", already: "Already present", skipped: "Skipped", failed: "Failed" },

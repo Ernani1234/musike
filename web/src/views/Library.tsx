@@ -1,3 +1,4 @@
+import { OfflineStorage } from "../components/OfflineStorage";
 import { PlaylistImportDialog } from "../components/PlaylistImportDialog";
 import { socialState, type SocialState } from "../lib/social";
 import { useSession } from "../stores/session";
@@ -53,7 +54,7 @@ export default function Library() {
         title={t.nav.library}
         actions={
           <>
-          {user && <button type="button" className="button-secondary text-xs" onClick={() => setImporting(true)}>{t.collaboration.importPlaylist}</button>}
+          {user && <button type="button" className="button-secondary text-xs" onClick={() => setImporting(true)}>{t.offline.importShort}</button>}
           <button
             type="button"
             onClick={() => setCreating(true)}
@@ -66,6 +67,7 @@ export default function Library() {
         }
       />
 
+      {user && <section className="px-4 pt-3 md:px-6"><Link className="button-secondary" to={paths.offline}>{t.offline.open}</Link><OfflineStorage /></section>}
       <ul className="grid grid-cols-1 gap-1 px-2 pt-2 md:grid-cols-3 md:gap-2 md:px-4 lg:grid-cols-4 2xl:grid-cols-6">
         <Entry to={paths.favorites} name={t.nav.favorites} kind="favorites" tracks={favorites} sub={t.common.tracks(favorites.length)} />
         <Entry to={paths.history} name={t.nav.recentlyPlayed} kind="history" tracks={history} sub={t.common.tracks(history.length)} />

@@ -1,3 +1,21 @@
+# Current delivery — background/offline source revision, 20 November 2026
+
+This header supersedes earlier release instructions. Base: upload `musike-main (6).zip`, commit `c1293caa1302c779b589289b6ba590c2d43f6caa`. Use the complete source ZIP or apply the new patch against this exact baseline. Do not reapply historical patches included as evidence. No production deployment was performed.
+
+Use pnpm 10.14.0: `pnpm install --frozen-lockfile`, `pnpm test`, `pnpm typecheck`, `pnpm build`, `pnpm --filter @musike/server bundle`. The lock adds only test dependency closure for jsdom/fake-indexeddb; existing runtime versions remain. No server migration, endpoint, Dockerfile, environment, compose or deployment-path change is required. Keep the existing wrapper executable with unchanged content; ZIP executable permissions are preserved.
+
+After updating the HTTPS web/PWA assets, refresh each client and verify the new worker. Only obsolete cache `artwork` is deleted; no site-wide cache/storage reset is used. The new image cache is `musike-artwork-v2`, at most 100 readable HTTP 200 images. General authenticated APIs/media stay outside service-worker caching.
+
+Offline is opt-in for a previously authenticated account on each browser installation: Library → Downloads/storage → choose 512 MiB/1 GiB/2 GiB → Enable audio caching. Suggested 1 GiB is not applied automatically. Explicit downloads use current Wi-Fi/mobile data; approve via the visible controls. Save a personal copy of a shared playlist first. Pin changes use Download updates; interrupted pins use Resume. No automatic bulk pin refresh occurs. Pausing caching retains playable downloads. Clear unpinned audio preserves pins. Persistence may be denied and browser/OS clearing may remove downloads.
+
+Offline reopening needs the precached app shell and downloaded complete audio. A prior owner profile is used only on transport failure, never a known 401/challenge. Offline role has no admin/social access. Only the last designated installation with an exclusive Web Lock may output; there are no offline transfers/jams. On reconnect output stops before authentication and server ownership reconciliation. Another device's explicit takeover while this installation is disconnected is unknowable; do not treat the fixture suite as a guarantee of globally exclusive offline sound.
+
+Explicit logout purges that owner's offline audio/metadata/settings/pins and saved queue. Offline logout also records pending server logout; authentication remains blocked until it can complete online. Server-side invalidation on an unavailable network cannot happen immediately. Local browser downloads are not encrypted against someone who controls that browser profile.
+
+Before promotion run ACCEPTANCE-CHECKLIST.md, especially Samsung A07 locked playlist/radio on Wi-Fi/mobile data, offline restart/seek/resume, interrupted downloads, quota failure and two-device reconnect. Browser discard/force-stop survival is not guaranteed. Rollback source/image normally; older source ignores the new IndexedDB data. If rollback must remove downloads, perform explicit owner logout or targeted offline-data removal first; do not clear all site data as an upgrade step. Keep existing server DB/secret backups and the working Discord CA fix unchanged.
+
+---
+
 # Current delivery — web/PWA production revision, 19 November 2026
 
 This header supersedes historical overlay/native instructions below. The current package is a complete source tree based on upload `79958c4d54b9173ce2d80182973c6dce80e208be`; apply the supplied clean patch against that exact baseline, or use a clean source directory. ZIP extraction over an old tree does not remove retired platform files. Preserve operator environment/compose files and runtime volumes. Only the two retired manifest COPY instructions and their comment changed in the source Dockerfile. The wrapper content remains unchanged; its executable permission is restored from the upload.

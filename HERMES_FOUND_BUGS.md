@@ -15,7 +15,7 @@ below includes reproduction steps and captured evidence.
 | BUG-004 | Radio sometimes stalls advancing to next song or errors server unreachable | MITIGATED + INSTRUMENTED; incident verification pending | 2026-11-18 |
 | BUG-005 | yt-dlp wrapper needs whole-file fix beyond BUG-001 mitigation | RESOLVED — provisionally accepted by user; wrapper content retained | 2026-11-18 |
 | BUG-006 | Cloudflare Tunnel Optimization Findings for Codex Evaluation | Browser mitigation implemented; edge/device cause unverified | 2026-11-19 |
-| BUG-007 | Locked-screen next-track fetch failure on Samsung A07 | MITIGATION UPDATED — complete-byte preload + unlock recovery; device verification pending | 2026-11-19 |
+| BUG-007 | Locked-screen next-track fetch failure on Samsung A07 | SOURCE LIFECYCLE FIX UPDATED — stable audio element/intent-aware Media Session; Samsung verification pending | 2026-11-19 |
 | BUG-008 | Retire desktop/mobile applications and native build wiring | RESOLVED in source — web/PWA only; Docker runtime acceptance pending | 2026-11-19 |
 | BUG-009 | Authenticated Discord Rich Presence | LIVE previously confirmed by user; revised stdout logging needs deployment regression | 2026-11-19 |
 | BUG-010 | Logging overhaul: stdout/docker-logs only, no in-app log files; Hermes self-diagnosis | RESOLVED in source — stdout diagnostics; audit/progress retained | 2026-11-19 |
@@ -26,6 +26,13 @@ below includes reproduction steps and captured evidence.
 | BUG-015 | Public YouTube playlist-link import | RESOLVED in source — progress, checkpoints and dedup; real playlist acceptance pending | 2026-11-19 |
 | BUG-016 | Friends, groups, shared playlists, jams and opt-in presence | IMPLEMENTED in source — authorization/coordination fixtures pass; real device acceptance pending | 2026-11-19 |
 | BUG-017 | Admin live playback, hard deletion and direct phone edit without OTP | RESOLVED in source — direct edit explicitly approved by user; demo acceptance pending | 2026-11-19 |
+| BUG-018 | Stale jam transfer grants, JSON guards and guest next/previous | HERMES FIX RETAINED — reported deployed a67c8db | 2026-11-19 |
+| BUG-019 | Redundant Library backup button | HERMES FIX RETAINED — button remains removed | 2026-11-19 |
+| BUG-020 | Mobile import modal scrolling | HERMES FIX RETAINED — scrolling/focus layout unchanged | 2026-11-19 |
+| BUG-021 | Circular SVG/React event JSON on playback controls | RESOLVED IN SOURCE — real React SVG regression passes | 2026-11-19 |
+| BUG-022 | Ordinary locked playlist/radio notification/audio loss | SOURCE LIFECYCLE FIX IMPLEMENTED — Samsung acceptance pending | 2026-11-20 |
+| BUG-023 | Persistent audio-only offline music and storage budget | IMPLEMENTED IN SOURCE — offline/storage/auth fixtures pass; real PWA acceptance pending | 2026-11-20 |
+| BUG-024 | Compact mobile playlist import presentation | RESOLVED IN SOURCE — existing bottom-sheet scrolling retained; visual acceptance pending | 2026-11-20 |
 ---
 
 > Current dispositions are in the index and the dated follow-up below. Original reports retain their historical wording/status as evidence. “Resolved in source” does not certify a live provider, tunnel or physical-device acceptance test.
@@ -864,3 +871,15 @@ The `Modal` panel had no max-height or scroll: tall content (import report heade
 ## BUG-024 — NEW: YouTube playlist import dialog restyle for mobile (reported 2026-11-20)
 
 **Desired (operator-confirmed):** bottom-sheet style consistent with other dialogs (BUG-020 already made the Modal scrollable — this entry is purely a styling/UX pass), a compact "Import" pill button, and shortened labels/wording. Codex reworks the mobile presentation of the import dialog (`PlaylistImportDialog.tsx` + copy in `web/src/i18n/*`) — do not reintroduce unscrollable content (keep the Modal a67c8db scroll behavior).
+
+
+## Implementation follow-up — BUG-007/021–024 — 20 November 2026
+
+Authorized after the user's final confirmation, against upload revision `c1293caa1302c779b589289b6ba590c2d43f6caa`. Original reports above, including the duplicated BUG-018 heading, are preserved verbatim as historical evidence. Hermes BUG-018–020 changes remain in place.
+
+- **BUG-021 resolved in source:** real React SVG path clicks reproduce the circular fiber reference. Controls now explicitly invoke zero-argument actions; the remote/jam boundary constructs a data-only allowlisted payload. Guests retain next/previous permission, conflict refresh/retry, and bounded output-grant waiting.
+- **BUG-022 and overlapping BUG-007 source lifecycle fix:** ordinary playlist/radio auto-end and manual-next paths now keep the same audio element. Complete next-body hydration avoids relying on advisory media buffers. Loading retains Media Session play intent; Play is idempotent while loading, Pause cancels loading, and invalid artwork cannot abort playback. Pause-before-source completion cannot later start the prior track. No native app, silent keepalive, speculative tunnel edit or yt-dlp shell rewrite was added. The shell wrapper's existing tests pass unchanged. This is not a claim that the Samsung A07 OS incident is proven resolved: ten locked playlist/radio transitions on both Wi-Fi and mobile data, notification persistence and manual controls still require physical-device acceptance.
+- **BUG-023 implemented in source:** user-selected 512 MiB/1 GiB/2 GiB opt-in budget, recent audio cache, explicit personal-playlist pin/update/resume, bounded complete audio-only bodies, atomic owner-scoped admission and oldest-unpinned eviction. Pinned and pending memberships are protected. Offline authenticated reopening, explicit logout purge/pending server logout, same-installation output eligibility, exclusive offline tab ownership and stop-before-reconnect are wired. No offline jams/transfers. An offline installation cannot detect another device's explicit takeover while disconnected, as accepted by the user. Old opaque artwork cache alone is replaced; exact audio usage and approximate total site usage are shown separately.
+- **BUG-024 resolved in source:** compact Import pill/short labels/wrapping and removed duplicate padding; retain the existing scrollable mobile Modal. Completed import polling stops. Real narrow-screen/keyboard/focus acceptance remains pending.
+
+Verification: 138 tests, zero failed/skipped; server/web TypeScript, production web/PWA build and server bundle pass. See TEST-RESULTS.md for exact environment, lockfile checks and unperformed device/runtime acceptance. No production deployment or new SQLite schema/endpoint is included.

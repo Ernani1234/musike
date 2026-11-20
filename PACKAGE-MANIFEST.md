@@ -1,3 +1,13 @@
+# Current source package — background/offline revision, 20 November 2026
+
+Complete source based on upload `c1293caa1302c779b589289b6ba590c2d43f6caa`, with approved BUG-021–024/BUG-007 changes and Hermes BUG-018–020 retained. Use `Musike_Background_Offline_20261120.patch` only against that exact baseline, or use the full source ZIP. The patch is also included in the ZIP for review; choose one installation method. Do not apply the historical patches below.
+
+`BACKGROUND-OFFLINE-IMPACT.md` inventories changed files/functions. `BACKGROUND-OFFLINE-DOCUMENTATION-SYNC.md` supplies exact markdown snippets. `BACKGROUND-OFFLINE-HANDOFF.md` records behavior, checks and remaining real-device acceptance. `SOURCE-SHA256.json` covers every packaged source file except itself and this revision's generated patch (avoids recursion).
+
+Dependencies, bundles, caches/DBs/runtime data, raw diagnostic attachments, credentials, `.git` and vendor SDK binaries are excluded. Uploaded source/operator examples are retained unchanged; this package does not deploy them. ZIP executable permissions match the uploaded archive.
+
+---
+
 # Current complete-source delivery — 19 November 2026
 
 Source ZIP: `Musike_Web_PWA_Production_20261119.zip`; baseline upload `79958c4d54b9173ce2d80182973c6dce80e208be`. Complete source replacements are included. `EXPANDED-FIXES.patch` is the clean patch against that upload and includes retired-file deletions. `EXPANDED-IMPACT.md` lists affected files/functions; `EXPANDED-DOCUMENTATION-SYNC.md` contains exact current markdown snippets; `EXPANDED-HANDOFF.md` gives installation, validation and remaining acceptance.

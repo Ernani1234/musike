@@ -1,3 +1,14 @@
+# 20 November 2026 — approved BUG-021–024 / BUG-007 revision
+
+- Fixed React/SVG event serialization at control callbacks and the typed remote/jam command boundary; retained Hermes BUG-018–020 fixes.
+- Reworked browser audio transitions around one audio element, complete-body handoffs, intent-aware Media Session and idempotent lock-screen play/pause. Real Samsung validation remains pending.
+- Added opt-in audio-only offline storage, selected budgets, recents, explicit personal-playlist downloads/updates/resume, pin-protected LRU admission, usage controls, offline authenticated entry, output fencing and logout purge. No general API/video caching or new SQLite schema/endpoints.
+- Replaced the old opaque artwork cache only and compacted playlist import presentation while retaining modal scrolling; stopped terminal import polling.
+- Added DOM/IndexedDB regression dependencies only. Existing runtime versions, shell wrapper content, Dockerfile, operator environment/compose/deployment settings, social/admin/Discord behavior and web/PWA-only scope are preserved.
+- Verification: 138 tests; typechecks, web/PWA and server bundle pass. Physical Samsung/PWA/real-provider and Docker acceptance remain operator checks.
+
+---
+
 # Changelog
 
 ## Unreleased — BUG-007–012 and device synchronization — 2026-11-19

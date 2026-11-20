@@ -19,6 +19,8 @@
   "devDependencies": {
     "@types/node": "^22.20.5",
     "esbuild": "0.28.2",
+    "fake-indexeddb": "6.2.4",
+    "jsdom": "27.2.0",
     "tsx": "4.23.15",
     "typescript": "^7.0.2"
   }

@@ -16,20 +16,20 @@ export function PlaylistImportDialog({ open, onClose }: { open: boolean; onClose
       try { const next = await accountRequest<Report | null>(report ? `/api/playlist-imports/${report.id}?offset=${offset}` : "/api/playlist-imports");
         if (!stopped) { setReport(next); if (next && !["running", "queued"].includes(next.status)) await useLibrary.getState().load(); }
       } catch (e) { if (!stopped) setError((e as Error).message); }
-      finally { if (!stopped) timer = setTimeout(() => void poll(), 2000); }
+      finally { if (!stopped && (!report || ["running", "queued"].includes(report.status))) timer = setTimeout(() => void poll(), 2000); }
     }; void poll(); return () => { stopped = true; clearTimeout(timer); };
-  }, [open, report?.id, offset]);
+  }, [open, report?.id, report?.status, offset]);
   const act = async (path: string, body: unknown) => { setBusy(true); setError(""); try { const result = await accountRequest<{ id?: string }>(path, body); if (result.id) { const next = await accountRequest<Report>(`/api/playlist-imports/${result.id}`); setOffset(0); setReport(next); } } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
   const active = report && ["running", "queued"].includes(report.status);
-  return <Modal open={open} onClose={onClose} title={c.importPlaylist}><div className="flex flex-col gap-3 p-4">
-    <label className="flex flex-col gap-2 text-sm">{c.playlistUrl}<input type="url" className={input} value={url} onChange={e => setUrl(e.target.value)} /></label>
-    <label className="flex flex-col gap-2 text-sm">{c.destination}<select className={input} value={destination} onChange={e => setDestination(e.target.value)}><option value="">{c.newOrPrevious}</option>{playlists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-    <button type="button" className="button-secondary" disabled={busy || !!active || !url} onClick={() => void act("/api/playlist-imports", { url, destination: destination || undefined })}>{t.features.importNow}</button>
+  return <Modal open={open} onClose={onClose} title={t.offline.importTitle}><div className="flex min-w-0 flex-col gap-3">
+    <label className="flex flex-col gap-2 text-sm">{t.offline.url}<input type="url" className={input} value={url} onChange={e => setUrl(e.target.value)} /></label>
+    <label className="flex flex-col gap-2 text-sm">{t.offline.destination}<select className={input} value={destination} onChange={e => setDestination(e.target.value)}><option value="">{t.offline.newPlaylist}</option>{playlists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+    <button type="button" className="button-secondary" disabled={busy || !!active || !url} onClick={() => void act("/api/playlist-imports", { url, destination: destination || undefined })}>{t.offline.startImport}</button>
     {error && <p className="text-sm text-danger" role="alert">{error}</p>}
     {report && <><h3 className="font-medium">{report.summary.title}</h3><p className="text-sm" role="status">{c.status[report.status as keyof typeof c.status] ?? report.status} · {report.summary.processed}/{report.summary.total}</p>
       <p className="text-sm text-fg-2">{t.features.imported}: {report.summary.added} · {t.features.already}: {report.summary.already} · {c.skipped}: {report.summary.skipped} · {c.failed}: {report.summary.failed}</p>
       {report.summary.capped && <p className="text-sm text-fg-2">{c.importCapped}</p>}
-      <ul className="scroll-area max-h-64 overflow-auto text-sm">{report.entries.map(e => <li key={e.position} className="flex justify-between gap-2 border-b border-line py-2"><span>{e.position + 1}. {e.title}</span><span className="text-fg-2">{c.status[e.status as keyof typeof c.status] ?? e.status}</span></li>)}</ul>
+      <ul className="scroll-area max-h-64 overflow-auto text-sm">{report.entries.map(e => <li key={e.position} className="flex flex-wrap justify-between gap-2 border-b border-line py-2 break-words"><span>{e.position + 1}. {e.title}</span><span className="text-fg-2">{c.status[e.status as keyof typeof c.status] ?? e.status}</span></li>)}</ul>
       <div className="flex flex-wrap gap-2"><button type="button" className="button-secondary" disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 100))}>{c.previous}</button><button type="button" className="button-secondary" disabled={offset + 100 >= report.summary.total} onClick={() => setOffset(offset + 100)}>{c.next}</button>
         <button type="button" className="button-secondary" disabled={busy} onClick={() => void act(`/api/playlist-imports/${report.id}/${active ? "cancel" : "resume"}`, {})}>{active ? t.common.cancel : c.resume}</button></div>
     </>}

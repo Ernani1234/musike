@@ -1,3 +1,4 @@
+import { OfflinePlaylistButton } from "../components/OfflineStorage";
 import { DotsThreeIcon, MagnifyingGlassIcon, PauseIcon, PencilSimpleIcon, PlayIcon, ShuffleIcon, TrashIcon } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -118,6 +119,7 @@ export default function Collection({ kind }: Props) {
         )}
       </div>
 
+      {playlist && <section className="px-4 pb-4 md:px-6"><OfflinePlaylistButton playlist={playlist} /></section>}
       <div className="px-2 md:px-3">
         {tracks.length > 0 ? (
           <TrackList tracks={tracks} playlistId={playlist?.id} listKey={`${kind}:${id ?? ""}`} showAlbum />

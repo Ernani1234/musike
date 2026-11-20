@@ -1,3 +1,4 @@
+import { playbackCommand } from "./playbackCommands";
 import { create } from "zustand";
 import { accountRequest } from "../stores/session";
 import { alignJamPlayback, claimPlayback, setJamControl, usePlaybackDevices, type SharedPlayback } from "./playbackSync";
@@ -14,6 +15,7 @@ function receive(view: JamView | null, transit = 0) {
   useJam.setState({ view, error: "" });
   if (!view) { setJamControl(null); return; }
   setJamControl((action, args) => {
+    ({ action, args } = playbackCommand(action, args));
     const stamp = generation;
     commands = commands.then(async () => {
       const current = useJam.getState().view; if (!current || generation !== stamp) return;

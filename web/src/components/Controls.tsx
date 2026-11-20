@@ -60,31 +60,31 @@ export function Transport({ big = false }: { big?: boolean }) {
         label={p.shuffle ? t.player.shuffleOn : t.player.shuffleOff}
         active={p.shuffle}
         size={big ? "lg" : "sm"}
-        onClick={p.toggleShuffle}
+        onClick={() => p.toggleShuffle()}
         disabled={!hasTrack}
       >
         <ShuffleIcon size={big ? 22 : 17} />
         {p.shuffle && <span className="absolute bottom-0.5 size-1 rounded-full bg-accent-text" />}
       </IconButton>
-      <IconButton label={t.player.previous} size={big ? "lg" : "md"} onClick={p.prev} disabled={!hasTrack} className="text-fg">
+      <IconButton label={t.player.previous} size={big ? "lg" : "md"} onClick={() => p.prev()} disabled={!hasTrack} className="text-fg">
         <SkipBackIcon size={iconSize} weight="fill" />
       </IconButton>
       <PlayDisc
         label={p.status === "playing" ? t.common.pause : t.common.play}
         px={big ? 72 : 40}
-        onClick={p.toggle}
+        onClick={() => p.toggle()}
         disabled={!hasTrack}
       >
         <PlayPauseIcon size={big ? 30 : 20} />
       </PlayDisc>
-      <IconButton label={t.player.next} size={big ? "lg" : "md"} onClick={p.next} disabled={!hasTrack} className="text-fg">
+      <IconButton label={t.player.next} size={big ? "lg" : "md"} onClick={() => p.next()} disabled={!hasTrack} className="text-fg">
         <SkipForwardIcon size={iconSize} weight="fill" />
       </IconButton>
       <IconButton
         label={repeatLabel}
         active={p.repeat !== "off"}
         size={big ? "lg" : "sm"}
-        onClick={p.cycleRepeat}
+        onClick={() => p.cycleRepeat()}
         disabled={!hasTrack}
       >
         <RepeatGlyph size={big ? 22 : 17} />

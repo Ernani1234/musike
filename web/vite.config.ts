@@ -33,12 +33,12 @@ export default defineConfig({
               runtimeCaching: [
                 {
                   // Artwork only. Streams and API responses are never cached by the service worker.
-                  urlPattern: ({ url }) => /(^|\.)ytimg\.com$|googleusercontent\.com$|ggpht\.com$/.test(url.hostname),
+                  urlPattern: ({ url, request }) => request.destination === "image" && /(^|\.)(ytimg\.com|googleusercontent\.com|ggpht\.com)$/.test(url.hostname),
                   handler: "CacheFirst",
                   options: {
-                    cacheName: "artwork",
-                    expiration: { maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 30 },
-                    cacheableResponse: { statuses: [0, 200] },
+                    cacheName: "musike-artwork-v2",
+                    expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
+                    cacheableResponse: { statuses: [200] },
                   },
                 },
               ],

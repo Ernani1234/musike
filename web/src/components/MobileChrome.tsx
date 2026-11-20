@@ -89,7 +89,7 @@ export function MiniPlayer() {
           </button>
           <button
             type="button"
-            onClick={toggle}
+            onClick={() => toggle()}
             aria-label={status === "playing" ? t.common.pause : t.common.play}
             className="grid size-11 shrink-0 place-items-center rounded-full text-fg active:scale-90"
           >

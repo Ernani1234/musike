@@ -3,6 +3,7 @@ import { en, type Messages } from "./en";
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export const pt: Messages = {
+  offline: en.offline, // Explicit English fallback for offline audio.
   collaboration: en.collaboration, // Explicit English fallback for collaboration features.
   features: en.features, // New instance features currently use the English catalog.
 

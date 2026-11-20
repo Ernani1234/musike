@@ -42,7 +42,7 @@ test("browser sync coordinators preserve sole outputs across transfers and cross
     } };
     set("__syncHarness", h);
     const root = path.resolve("../web/src"); const mocks = new Map([
-      [path.join(root, "stores/session.ts"), "const h=globalThis.__syncHarness;export const accountRequest=(url,body)=>h.request(url,body);"],
+      [path.join(root, "stores/session.ts"), "const h=globalThis.__syncHarness;export const accountRequest=(url,body)=>h.request(url,body);export const useSession={getState:()=>({offline:false})};"],
       [path.join(root, "i18n/index.ts"), "export const getT=()=>({features:{syncFailure:'Sync failed',syncConnecting:'Connecting',phoneDevice:'Phone',browserDevice:'Computer'}});"],
       [path.join(root, "stores/ui.ts"), "export const toast=()=>{};"],
     ]);

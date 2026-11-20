@@ -5,6 +5,7 @@ import { ListPager } from "./ListPager";
 import { useLibrary } from "../stores/library";
 import { accountRequest, useSession } from "../stores/session";
 import { DiscordSection } from "./DiscordSection";
+import { logoutOfflineData } from "../lib/offlineDownloads";
 import { releasePlayback } from "../lib/playbackSync";
 import { PlaybackDevices } from "./PlaybackDevices";
 const AdminPanel = lazy(() => import("./AdminPanel"));
@@ -16,7 +17,7 @@ export function AccountPanel() {
     <h3 className="text-sm font-semibold">{t.features.account}</h3>
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     <p className="text-sm text-fg-2">{session.user.name || session.user.phone}</p>
-    <button type="button" className="button-secondary" onClick={() => void releasePlayback().then(() => accountRequest("/api/auth/logout", {})).then(() => location.reload()).catch((e) => setError(e.message))}>{t.features.logout}</button>
+    <button type="button" className="button-secondary" onClick={() => void releasePlayback().then(() => accountRequest("/api/auth/logout", {})).then(() => logoutOfflineData()).then(() => location.reload()).catch((e) => setError(e.message))}>{t.features.logout}</button>
     {session.user.role === "admin" && <><button type="button" className="button-secondary" onClick={() => setAdmin((value) => !value)}>{t.features.admin}</button>
       {admin && <Suspense fallback={null}><AdminPanel /></Suspense>}</>}
     {session.google && <GooglePanel />}

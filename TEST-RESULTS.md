@@ -1,3 +1,27 @@
+# Current verification — background/offline revision, 20 November 2026
+
+Uploaded baseline: `c1293caa1302c779b589289b6ba590c2d43f6caa`. Node v24.22.3, pnpm 10.14.0. Docker targets Node 22; no container/device acceptance is implied.
+
+| Check | Observed result |
+| --- | --- |
+| `pnpm test` | PASS — 138 tests, 0 failed, 0 skipped/cancelled |
+| `pnpm typecheck` | PASS — server and web |
+| `pnpm build` | PASS — production web/PWA, 36 precached entries, 868.91 KiB |
+| `pnpm --filter @musike/server bundle` | PASS |
+| `pnpm install --frozen-lockfile` | PASS with pnpm 10.14.0 and available cache/registry; new test dependencies linked, esbuild postinstall succeeded |
+| Dependency scope | Only server devDependencies jsdom 27.2.0 and fake-indexeddb 6.2.4 plus 43 required lock package/snapshot additions; existing lock entries/versions preserved |
+| Existing shell wrapper | All five fixtures pass; content unchanged, original ZIP executable permissions retained |
+| Source/patch/archive | Clean patch application, byte/tree/hash and ZIP CRC verification recorded with this package |
+| Headless Chromium | NOT RUN successfully — browser exits at launch (`socket() failed: Operation not permitted`). Actual React SVG and AuthGate tests use jsdom; storage fixtures use fake-indexeddb, not real-browser quota/eviction |
+| Samsung A07 / Wi-Fi / mobile / locked notification | PENDING — synthetic hidden/media fixtures do not establish physical OS behavior |
+| Real offline PWA, quota/persistence/Web Locks, provider/tunnel, Discord SDK and Docker runtime | PENDING — operator acceptance in ACCEPTANCE-CHECKLIST.md |
+
+Sixteen new fixtures cover Media Session/metadata and data-only commands, the actual React SVG fiber/click/jam pipeline, owner/budget/pin/concurrent IndexedDB admission, full-body audio-only downloads, interruption/resume/logout and last-output eligibility, and real AuthGate fallback for offline/401/challenge/pending logout. One additional preload hydration fixture brings the suite from 121 to 138 tests. Existing lifecycle fixtures now verify the same audio element rather than a spare and exercise loading play/pause cancellation. The reported OS freeze cause remains unproven until physical testing.
+
+The pnpm 11 fallback attempted an automatic policy install and stopped; its unsolicited workspace setting was removed. Final package commands and frozen install used the repository-pinned pnpm 10.14.0. No dependency artifacts or generated build output enter the source ZIP.
+
+---
+
 # Current verification — expanded web/PWA revision, 19 November 2026
 
 Baseline upload: `79958c4d54b9173ce2d80182973c6dce80e208be`. Node v24.22.3; package commands use pnpm 10.14.0. Production Docker still targets Node 22; no actual container runtime was available here.

@@ -1,3 +1,24 @@
+# Current acceptance — background/offline source revision, 20 November 2026
+
+Base `c1293caa`. Checked items are fixtures/build checks, not deployment or physical-device claims.
+
+- [x] 138 tests; actual React SVG click path, clean jam/remote payloads and Hermes transfer/SSE/guest-control regressions.
+- [x] Stable audio element for hidden ended/manual next; intent-aware loading, play/pause, bounded retry and stale source cancellation fixtures.
+- [x] Async owner-scoped IndexedDB, exact audio byte accounting, concurrent admission, oldest-unpinned eviction, pinned/pending protection, lower-budget stop and logout isolation.
+- [x] Complete audio-only HTTP 200 admission; reject partial/video/HTML/empty bodies; interrupted checkpoint/resume without refetching completed tracks.
+- [x] Offline account reopening only after network failure; known 401/challenge/pending logout cannot authorize fallback; cached role/phone restrictions.
+- [x] Typechecks, production web/PWA build, server bundle, pnpm 10 frozen lockfile install and clean source patch/archive verification.
+- [ ] Samsung A07 installed Chrome PWA: ordinary playlist and radio × Wi-Fi and mobile data; ten consecutive automatic locked transitions each, notification persistence, manual next/previous, repeated Play and deliberate Pause while loading. Record trace IDs and audible gaps.
+- [ ] Real PWA: enable each budget; pin/download audio including a video catalog item; verify no video endpoint/bytes; airplane mode, app close/reopen, play/seek/repeat/shuffle and downloaded playlist availability.
+- [ ] Interrupt download/network or close tab, reopen and explicitly resume. Edit a pinned personal playlist and verify Updates available without automatic bulk download; complete update without losing the previous copy.
+- [ ] Fill/lower budget with pins; verify no pinned eviction, visible incomplete state, oldest-unpinned removal and separate total-site estimate. Exercise actual browser QuotaExceededError/persistence denial/site eviction.
+- [ ] Two accounts in one browser: isolate downloads, clear/log out one owner, preserve the other. Offline logout then reconnect must finish server logout before accepting the cookie again.
+- [ ] Two tabs and two devices: last designated installation only, exclusive offline tab lock, rejected unsupported lock, pause-before-reconnect and fresh online ownership. Exercise explicit remote takeover during a disconnection under the accepted partition limitation.
+- [ ] Phone narrow viewport, keyboard, focus, safe-area/scroll and long import reports; keep the Hermes modal and removed backup button behavior.
+- [ ] Actual Docker image build/run, real providers/Discord regression and production promotion through the operator's existing pipeline. No deployment performed here.
+
+---
+
 # Current acceptance — expanded web/PWA revision, 19 November 2026
 
 The earlier checklists below are historical evidence. Current automated results and limits are in TEST-RESULTS.md.

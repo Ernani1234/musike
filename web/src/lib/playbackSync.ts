@@ -1,3 +1,5 @@
+import { playbackCommand } from "./playbackCommands";
+import { rememberOutput } from "./offlineDownloads";
 import { create } from "zustand";
 import { accountRequest } from "../stores/session";
 import { getT } from "../i18n";
@@ -18,6 +20,7 @@ export const setJamControl = (control: typeof jamControl) => { jamControl = cont
 let alignJam: ((snapshot: SharedPlayback) => void) | null = null;
 export const alignJamPlayback = (snapshot: SharedPlayback) => alignJam?.(snapshot);
 export const playbackCanOutput = () => allowed;
+export const setOfflineOutput = (on: boolean) => { allowed = on; };
 let claim: ((takeover?: boolean) => Promise<void>) | null = null;
 let release: (() => Promise<void>) | null = null;
 export const claimPlayback = (takeover = false) => claim?.(takeover);
@@ -55,6 +58,7 @@ export function startPlaybackSync(store: Store) {
     const byId = new Map(next.snapshot.queue.map((track) => [track.id, track]));
     next = { ...next, snapshot: { ...next.snapshot, original: next.snapshot.original?.map((track) => byId.get(track.id)).filter((track): track is Track => !!track) ?? null } };
     const wasAllowed = allowed; view = next; allowed = next.active === next.deviceId;
+    void rememberOutput(allowed && !next.transfer, next.active, next.deviceId, !!next.transfer);
     if (lastEpoch !== next.epoch) { seq = 0; lastEpoch = next.epoch; lastCommand = ""; }
     applying = true;
     if (wasAllowed && !allowed) store.getState().suspendOutput();
@@ -104,14 +108,11 @@ export function startPlaybackSync(store: Store) {
   for (const [name, original] of originals) patches[name] = (...args: unknown[]) => {
     if (applying) return original(...args);
     if (stopped) return;
-    if (jamControl) return jamControl(name, args);
+    if (jamControl) { try { const command = playbackCommand(name, args); return jamControl(command.action, command.args); } catch (error) { fail(error); return; } }
     if (!view) { toast(getT().features.syncConnecting, "error"); return; }
     if (allowed && !view.transfer) return original(...args);
-    if (name === "playList" && Array.isArray(args[0])) {
-      const index = typeof args[1] === "number" ? args[1] : 0; const start = Math.max(0, index - 100);
-      args = [args[0].slice(start, start + 500), index - start];
-    }
-    return perform(async () => receive(await post({ type: "command", action: name, args })));
+    try { const command = playbackCommand(name, args); return perform(async () => receive(await post({ type: "command", ...command }))); }
+    catch (error) { fail(error); }
   };
   allowed = false; store.getState().suspendOutput(); store.setState(patches as Partial<ReturnType<Store["getState"]>>);
   usePlaybackDevices.setState({ enabled: true, connected: false });

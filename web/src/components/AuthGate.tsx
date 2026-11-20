@@ -1,3 +1,4 @@
+import { cachedOfflineAccount, forgetOfflineAccount, rememberOfflineAccount } from "../lib/offlineDownloads";
 import { useEffect, useState, type ReactNode } from "react";
 import { useT } from "../i18n";
 import { accountRequest, useSession, type SessionInfo } from "../stores/session";
@@ -13,19 +14,38 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     let alive = true;
     if (import.meta.env.MODE === "native") { setReady(true); return; }
-    accountRequest<SessionInfo>("/api/auth/me").then((data) => { if (alive) { if (data.enabled && data.user) sessionStorage.setItem("musike:user", data.user.id); else sessionStorage.removeItem("musike:user"); useSession.setState(data); setReady(true); } },
-      () => { if (alive) { setError(f.connectionFailed); setReady(true); useSession.setState({ enabled: true, user: null }); } });
-    const expired = () => useSession.setState({ user: null, enabled: true });
+    const pendingLogout = localStorage.getItem("musike:logout-pending");
+    const prepare = pendingLogout ? accountRequest("/api/auth/logout", {}).then(() => localStorage.removeItem("musike:logout-pending")) : Promise.resolve();
+    prepare.then(() => accountRequest<SessionInfo>("/api/auth/me")).then((data) => { if (alive) { if (data.enabled && data.user) sessionStorage.setItem("musike:user", data.user.id); else { sessionStorage.removeItem("musike:user"); forgetOfflineAccount(); } useSession.setState({ ...data, offline: false }); if (data.user) void rememberOfflineAccount(data.user.id, data.user.name); setReady(true); } },
+      async (error) => { if (!alive) return;
+        const cached = error.network && !pendingLogout ? await cachedOfflineAccount() : null;
+        if (!alive) return;
+        if (cached) { sessionStorage.setItem("musike:user", cached.id); useSession.setState({ enabled: true, user: cached, google: false, offline: true }); }
+        else { setError(f.connectionFailed); useSession.setState({ enabled: true, user: null, offline: false }); }
+        setReady(true);
+      });
+    const expired = () => { forgetOfflineAccount(); useSession.setState({ user: null, enabled: true, offline: false }); };
     window.addEventListener("musike:unauthorized", expired);
-    return () => { alive = false; window.removeEventListener("musike:unauthorized", expired); };
+    const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("musike-offline") : null;
+    if (channel) channel.onmessage = e => { if (e.data === `logout:${useSession.getState().user?.id}`) window.dispatchEvent(new Event("musike:unauthorized")); };
+    return () => { alive = false; channel?.close(); window.removeEventListener("musike:unauthorized", expired); };
   }, []);
   useEffect(() => { if (!cooldown) return; const timer = setTimeout(() => setCooldown((n) => Math.max(0, n - 1)), 1000); return () => clearTimeout(timer); }, [cooldown]);
   useEffect(() => {
-    if (!info.enabled || !info.user) return;
+    if (!info.enabled || !info.user || info.offline) return;
     const clientId = sessionStorage.getItem("musike:client") ?? crypto.randomUUID(); sessionStorage.setItem("musike:client", clientId);
     const ping = () => accountRequest<{ user: SessionInfo["user"] }>("/api/presence", { clientId }).then((r) => { if (r.user) useSession.setState({ user: r.user }); }).catch(() => {});
     void ping(); const timer = setInterval(ping, 15_000); return () => clearInterval(timer);
-  }, [info.enabled, info.user?.id]);
+  }, [info.enabled, info.user?.id, info.offline]);
+  useEffect(() => {
+    const lost = async () => {
+      const state = useSession.getState(); if (!state.user || !state.enabled) return;
+      const cached = await cachedOfflineAccount();
+      if (cached?.id === state.user.id && navigator.onLine === false) useSession.setState({ offline: true, google: false });
+    };
+    window.addEventListener("offline", lost);
+    return () => window.removeEventListener("offline", lost);
+  }, []);
   if (!ready) return <p className="p-6 text-fg-2">{t.common.loading}</p>;
   if (!info.enabled || info.user) return children;
   const send = async () => {
