@@ -62,13 +62,28 @@ int main() {
       else {
         discordpp::Activity presence;
         presence.SetType(discordpp::ActivityTypes::Listening);
+        // Member list shows "♫ <artist>" like Spotify instead of "Listening to Musike".
+        presence.SetStatusDisplayType(discordpp::StatusDisplayTypes::State);
         presence.SetDetails(activity->at("title").get<std::string>());
         presence.SetState(activity->at("artist").get<std::string>());
+        std::string url = activity->value("url", "");
+        if (!url.empty()) presence.SetDetailsUrl(url);
+        // Start + end = progress bar with elapsed and total time; start only = count-up timer.
         discordpp::ActivityTimestamps timestamps;
-        timestamps.SetStart(activity->at("startedAt").get<int64_t>());
+        int64_t start = activity->at("startedAt").get<int64_t>();
+        int64_t end = activity->value("endsAt", static_cast<int64_t>(0));
+        timestamps.SetStart(start);
+        if (end > start) timestamps.SetEnd(end);
         presence.SetTimestamps(timestamps);
         std::string image = activity->value("artwork", "");
-        if (!image.empty()) { discordpp::ActivityAssets assets; assets.SetLargeImage(image); presence.SetAssets(assets); }
+        if (!image.empty()) {
+          discordpp::ActivityAssets assets;
+          assets.SetLargeImage(image);
+          std::string album = activity->value("album", "");
+          if (!album.empty()) assets.SetLargeText(album);
+          if (!url.empty()) assets.SetLargeUrl(url);
+          presence.SetAssets(assets);
+        }
         client->UpdateRichPresence(presence, [](discordpp::ClientResult status) {
           std::cout << (status.Successful() ? "{\"event\":\"discord.sdk.updated\",\"ok\":true}" : "{\"event\":\"discord.sdk.updated\",\"ok\":false}") << std::endl;
         });

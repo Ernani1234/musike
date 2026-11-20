@@ -54,6 +54,8 @@ test("Discord receives confirmed playback, pause clears activity, disconnect del
     f.discord.update(f.user, snapshot); await new Promise((r) => setTimeout(r, 1100));
     const delivery = f.calls.find((call) => call.url.endsWith("/presence"))!; assert.ok(delivery);
     const body = JSON.parse(String(delivery.init!.body)); assert.equal(body.user, f.user); assert.equal(body.activity.title, "Fixture title");
+    assert.equal(body.activity.endsAt - body.activity.startedAt, 180); assert.ok(Math.abs(Date.now() / 1000 - 42 - body.activity.startedAt) < 3);
+    assert.equal(body.activity.url, "https://music.youtube.com/watch?v=testtrack01");
     assert.equal((await f.discord.status(f.user)).ready, true);
     f.discord.update(f.user, { ...snapshot, status: "paused" }); await new Promise((r) => setTimeout(r, 50));
     assert.equal(JSON.parse(String(f.calls.filter((call) => call.url.endsWith("/presence")).at(-1)!.init!.body)).activity, null);

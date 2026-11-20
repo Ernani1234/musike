@@ -5,7 +5,7 @@ import type { PlaybackSnapshot } from "./playbackSync.js";
 
 export interface DiscordOptions { clientId?: string; clientSecret?: string; redirectUri?: string; presenceUrl?: string; presenceKey?: string; transport?: typeof fetch; }
 interface Tokens { access_token: string; refresh_token: string; expires_at: number; }
-type Activity = { title: string; artist: string; artwork: string; startedAt: number } | null;
+type Activity = { title: string; artist: string; album: string; artwork: string; url: string; startedAt: number; endsAt: number } | null;
 /** OAuth and encrypted credentials stay in the server. Only an internal authenticated service sees access tokens. */
 export class DiscordService {
   readonly configured: boolean;
@@ -72,7 +72,15 @@ export class DiscordService {
   update(user: string, snapshot: PlaybackSnapshot) {
     if (!this.configured || this.closed) return;
     const track = snapshot.queue[snapshot.index];
-    const activity: Activity = snapshot.status === "playing" && track ? { title: track.title, artist: track.artist, artwork: track.art || track.thumb, startedAt: Math.floor(Date.now() / 1000 - snapshot.position) } : null;
+    let activity: Activity = null;
+    if (snapshot.status === "playing" && track) {
+      // Start and end together make Discord draw a Spotify-style progress bar (elapsed / total).
+      const startedAt = Math.floor(Date.now() / 1000 - snapshot.position);
+      const known = [snapshot.duration, track.duration].find((value) => Number.isFinite(value) && value > 0);
+      const duration = known ? Math.round(known) : 0;
+      activity = { title: track.title, artist: track.artist, album: track.album ?? "", artwork: track.art || track.thumb,
+        url: `https://music.youtube.com/watch?v=${track.id}`, startedAt, endsAt: duration ? startedAt + duration : 0 };
+    }
     let state = this.latest.get(user);
     if (!state) { if (this.latest.size >= 128) return; state = { activity, at: Date.now(), ready: false }; this.latest.set(user, state); }
     state.activity = activity; state.at = Date.now();
