@@ -834,3 +834,33 @@ The `Modal` panel had no max-height or scroll: tall content (import report heade
 - Suggested repro: 2 devices in one jam on a dev build, press play from each device, capture the console stack.
 
 **Scope:** live jam media controls. Operator accepts current takeover behavior otherwise. Do the heavy lifting: dev-build repro, stack trace, root cause, fix, tests. Deploy per the standing demo-first cycle (demo spun 1:1 from prod, verified, prod after operator sign-off).
+
+## BUG-022 — AMENDMENT (supersedes prior Bug #4 guidance; Codex: refactor the Android background-audio wrapper as a whole) (reported 2026-11-20, prod @ a67c8db)
+
+**Operator report (Samsung A07, Chrome PWA):** background playback bugs persist even after Codex's earlier fix attempts. No diagnostics could be downloaded — evidence is observational only. Operator's words: "we on the right path".
+
+**Observed (operator, verbatim intent):**
+- While the phone is LOCKED, the current playing song shows media controls in the Android notification.
+- The moment the song advances to the next track (operator is unsure whether the next was manually pressed or auto-advanced — treat both as repro candidates), the notification media controls DISAPPEAR.
+- On unlock the song plays right away instantly. Operator confirms this instant-resume-on-unlock is ACCEPTABLE: "music should keep playing seamlessly through lock/unlock — unlock changing to instant play is fine". Note: operator has never verified manual next-while-locked; the desired end state is uninterrupted music while driving (screen locked, song keeps playing forever).
+- Operator suspects Android PWA sleep/kill (battery optimization or service-worker/host termination) as the mechanism.
+
+**What Codex must do (scope: evaluate the whole mobile background-audio chain, not another patch):**
+- Locate and audit the Android/mobile background-audio wrapper script in the repo (the sh wrapper around playback — operator calls it "such a junky ass quick fix"; server tests reference a wrapper forwarding termination and reaping its metadata child). Codex identifies the exact file(s) from this description.
+- Refactor the wrapper + the media-session/notification layer together into a proper design: media notification must survive track advance (auto-advance and manual next) while locked, and the host/PWA must survive Android sleep.
+- Cover both repro candidates: auto-advance while locked AND manual next while locked. Re-test on Samsung A07 after each attempt (no diagnostics available — operator verifies behavior manually).
+
+## BUG-023 — NEW: offline mode for music (music only, never video) (reported 2026-11-20)
+
+**Context:** operator's Chrome storage shows the PWA already holds ~4GB of cache.
+
+**Desired behavior (operator-confirmed: options 1 + 3 combined):**
+1. Auto-cache recently played songs, bounded by a storage limit (suggest 1–2GB with oldest-evicted; exact cap is Codex's design decision).
+2. Cache entire playlists the user explicitly marks offline (a per-playlist "offline" toggle), independent of play history.
+3. Video is EXCLUDED entirely from offline caching — no video blobs in the persistent cache.
+
+**Codex design notes:** audit what currently fills the 4GB cache; reconcile the new cache with service-worker/Cache Storage eviction; surface a small usage indicator + per-playlist offline toggle in the UI; music-only enforcement must be hard (no fallback to caching video).
+
+## BUG-024 — NEW: YouTube playlist import dialog restyle for mobile (reported 2026-11-20)
+
+**Desired (operator-confirmed):** bottom-sheet style consistent with other dialogs (BUG-020 already made the Modal scrollable — this entry is purely a styling/UX pass), a compact "Import" pill button, and shortened labels/wording. Codex reworks the mobile presentation of the import dialog (`PlaylistImportDialog.tsx` + copy in `web/src/i18n/*`) — do not reintroduce unscrollable content (keep the Modal a67c8db scroll behavior).
