@@ -144,3 +144,50 @@ html[data-tv="1"] [role="dialog"] ul {
   flex-direction: column;
   gap: 6px;
 }
+
+/* ---- collection in the rail (favorites, history, playlists) -------------
+   Its links are flex items in a short column: they used to shrink under the
+   46px above while their tile kept its size (57px at the TV font size), so
+   each tile painted over the next one. The rows keep their height and the
+   list scrolls (focus brings the row into view); the tile fits the row. */
+html[data-tv="1"] aside.island .scroll-area > a {
+  flex-shrink: 0;
+}
+
+html[data-tv="1"] aside.island .scroll-area > a > span:first-child {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 11px;
+}
+
+/* A TV's page is often only 540px tall (1080p at 2x): the rail's own rows
+   leave the collection almost no room. Tighter rows there, so at least two
+   collection rows show and the rest scroll. */
+@media (max-height: 600px) {
+  html[data-tv="1"] aside.island > div > div:first-child {
+    height: 40px !important;
+  }
+
+  html[data-tv="1"] aside.island nav {
+    gap: 4px !important;
+  }
+
+  html[data-tv="1"] aside.island nav a,
+  html[data-tv="1"] aside.island .scroll-area > a {
+    height: 40px !important;
+  }
+
+  html[data-tv="1"] aside.island .scroll-area > a > span:first-child {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 10px;
+  }
+
+  html[data-tv="1"] aside.island > div > div:last-child {
+    padding-block: 4px;
+  }
+
+  html[data-tv="1"] aside.island > div > div:last-child button {
+    height: 40px !important;
+  }
+}
