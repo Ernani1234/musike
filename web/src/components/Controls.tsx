@@ -13,7 +13,7 @@ import {
   SpeakerXIcon,
   VideoCameraIcon,
 } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useT } from "../i18n";
 import { capabilities } from "../lib/api";
@@ -138,6 +138,52 @@ export function Volume({ className }: { className?: string }) {
         <Glyph size={18} />
       </IconButton>
       <Slider label={t.player.volume} value={level} max={1} step={0.05} live onChange={setVolume} valueText={(v) => `${Math.round(v * 100)}%`} className="w-24" />
+    </div>
+  );
+}
+
+/**
+ * The volume where the bar has no room for the slider (a window snapped to half a screen): the speaker opens it
+ * above, with the mute button. The wheel on the speaker changes the volume too.
+ */
+export function VolumePopover({ className }: { className?: string }) {
+  const t = useT();
+  const volume = usePlayer((s) => s.volume);
+  const muted = usePlayer((s) => s.muted);
+  const setVolume = usePlayer((s) => s.setVolume);
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const level = muted ? 0 : volume;
+  const Glyph = level === 0 ? SpeakerXIcon : level < 0.5 ? SpeakerLowIcon : SpeakerHighIcon;
+
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const escape = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+
+  return (
+    <div
+      ref={box}
+      className={cn("relative", className)}
+      onWheel={(e) => setVolume(Math.min(1, Math.max(0, level + (e.deltaY < 0 ? 0.05 : -0.05))))}
+    >
+      <IconButton label={t.player.volume} size="sm" active={open} onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <Glyph size={18} />
+      </IconButton>
+      {open && (
+        <div className="absolute right-0 bottom-full z-30 mb-3 rounded-full bg-surface-3 px-2 py-1.5 shadow-lg ring-1 ring-line">
+          <Volume />
+        </div>
+      )}
     </div>
   );
 }

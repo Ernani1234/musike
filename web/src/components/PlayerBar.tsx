@@ -4,7 +4,7 @@ import { useT } from "../i18n";
 import { selectCurrent, usePlayer, useStatusText } from "../player/player";
 import { useUi } from "../stores/ui";
 import { Artwork } from "./Artwork";
-import { FavoriteButton, ModeSwitch, Scrubber, Transport, Volume } from "./Controls";
+import { FavoriteButton, ModeSwitch, Scrubber, Transport, Volume, VolumePopover } from "./Controls";
 import { IconButton } from "./IconButton";
 
 /** Desktop and tablet player: a floating island under the content. */
@@ -69,6 +69,7 @@ export function PlayerBar() {
             <SidebarSimpleIcon size={18} mirrored />
           </IconButton>
           <Volume className="max-lg:hidden" />
+          <VolumePopover className="lg:hidden" />
           <IconButton label={t.player.shortcuts} size="sm" onClick={() => setShortcutsOpen(true)} className="max-xl:hidden">
             <KeyboardIcon size={18} />
           </IconButton>
