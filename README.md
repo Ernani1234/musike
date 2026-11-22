@@ -73,6 +73,7 @@ Musike started from the idea behind the old Discord music bots: a server that fe
 - Playlists, Favorites and recently played history
 - Select many tracks at once to play, favorite or add to a playlist
 - **Backup to a file** to move everything to another Musike: merge or replace, with a preview before importing
+- **Import from Spotify:** export your playlists with [Exportify](https://exportify.net) ("Export All"), pick the zip in **Settings > Import from Spotify**, and Musike finds every song on YouTube Music (title, artist and length must match). Each playlist comes over as a Musike playlist and "Liked Songs" become Favorites; songs it can't find are listed, and the import merges without deleting anything
 
 **Make it yours**
 - **English** and **Brazilian Portuguese**, switchable in Settings (per device). Server messages and the genre names and bios that come from YouTube Music follow the same language
