@@ -100,6 +100,7 @@ interface MediaState {
 }
 
 let currentMedia: MediaState | null = null;
+let thumbarReady = false;
 
 function setThumbarButtons(win: BrowserWindow, state: MediaState) {
   const icon = (name: string) => nativeImage.createFromPath(path.join(here, `thumbar-${name}.png`));
@@ -151,6 +152,8 @@ function createSplash(): BrowserWindow {
 }
 
 function createMainWindow(url: string): BrowserWindow {
+  thumbarReady = false;
+  currentMedia = null;
   const state = readWindowState();
   const win = new BrowserWindow({
     ...state,
@@ -178,7 +181,15 @@ function createMainWindow(url: string): BrowserWindow {
   win.once("ready-to-show", () => {
     if (state.maximized) win.maximize();
     win.show();
-    if (process.platform === "win32" && currentMedia) setThumbarButtons(win, currentMedia);
+    // Windows needs time to create the taskbar button after the window is shown.
+    // Registering the toolbar while the window is hidden can leave it invisible.
+    if (process.platform === "win32") {
+      setTimeout(() => {
+        if (win.isDestroyed()) return;
+        thumbarReady = true;
+        if (currentMedia) setThumbarButtons(win, currentMedia);
+      }, 500);
+    }
   });
   win.on("close", () => saveWindowState(win));
 
@@ -256,7 +267,7 @@ ipcMain.on("musike:retry", (event) => {
 ipcMain.on("musike:media", (event, media: MediaState) => {
   if (event.sender !== mainWindow?.webContents) return;
   currentMedia = media;
-  if (mainWindow && process.platform === "win32") {
+  if (mainWindow && process.platform === "win32" && thumbarReady) {
     setThumbarButtons(mainWindow, media);
   }
 });
