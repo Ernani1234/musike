@@ -1,6 +1,6 @@
 // Bundles the Electron main process (with the whole Musike server inside) and the preload script.
 // The packaged app then needs no node_modules at all.
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -37,4 +37,7 @@ await build({
 
 copyFileSync(path.join(root, "src", "splash.html"), path.join(out, "splash.html"));
 copyFileSync(path.join(root, "build", "icon.png"), path.join(out, "icon.png"));
+for (const file of readdirSync(path.join(root, "src", "thumbar"))) {
+  copyFileSync(path.join(root, "src", "thumbar", file), path.join(out, `thumbar-${file}`));
+}
 console.log("desktop bundle ok");
