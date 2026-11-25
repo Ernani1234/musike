@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { getT, useT } from "../i18n";
 import { api, capabilities, explainStreamError, streamSource, systemMedia, type ApiError, type ErrorCode } from "../lib/api";
 import { createAudio } from "../lib/audio";
+import { desktop } from "../lib/desktop";
 import { shuffled } from "../lib/format";
 import type { Track } from "../lib/types";
 import { useLibrary } from "../stores/library";
@@ -668,6 +669,44 @@ if ("mediaSession" in navigator) {
   }
   const restored = selectCurrent(usePlayer.getState());
   if (restored) setMetadata(restored);
+}
+
+if (desktop?.platform === "win32" && desktop.updateMediaControls) {
+  let lastState = "";
+  const syncThumbar = () => {
+    const player = usePlayer.getState();
+    const track = player.queue[player.index];
+    const favorite = !!track && useLibrary.getState().isFavorite(track.id);
+    const playing = player.status === "playing" || player.status === "loading";
+    const t = getT();
+    const state = {
+      hasTrack: !!track,
+      playing,
+      favorite,
+      labels: {
+        favorite: favorite ? t.common.removeFromFavorites : t.common.addToFavorites,
+        previous: t.player.previous,
+        play: playing ? t.common.pause : t.common.play,
+        next: t.player.next,
+      },
+    };
+    const serialized = JSON.stringify(state);
+    if (serialized !== lastState) {
+      lastState = serialized;
+      desktop?.updateMediaControls?.(state);
+    }
+  };
+  usePlayer.subscribe(syncThumbar);
+  useLibrary.subscribe(syncThumbar);
+  desktop.onMediaAction?.((action) => {
+    const player = usePlayer.getState();
+    const track = player.queue[player.index];
+    if (action === "favorite" && track) void useLibrary.getState().toggleFavorite(track);
+    else if (action === "toggle") player.toggle();
+    else if (action === "next") player.next();
+    else if (action === "previous") player.prev();
+  });
+  syncThumbar();
 }
 
 /** The player's status line in the current language, or null when there is nothing to say. */

@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, ipcMain, Menu, screen, shell } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, shell } from "electron";
 import type { RunningServer } from "../../server/src/app.js";
 import { backupLibraryOnUpdate } from "./backup.js";
 
@@ -90,6 +90,49 @@ function saveWindowState(win: BrowserWindow) {
   }
 }
 
+// ── Windows taskbar thumbnail preview controls ──────────────────────────
+
+interface MediaState {
+  hasTrack: boolean;
+  playing: boolean;
+  favorite: boolean;
+  labels: { favorite: string; previous: string; play: string; next: string };
+}
+
+let currentMedia: MediaState | null = null;
+
+function setThumbarButtons(win: BrowserWindow, state: MediaState) {
+  const icon = (name: string) => nativeImage.createFromPath(path.join(here, `thumbar-${name}.png`));
+  const flags: Electron.ThumbarButton["flags"] = state.hasTrack ? [] : ["disabled"];
+  const buttons: Electron.ThumbarButton[] = [
+    {
+      icon: icon(state.favorite ? "favorite" : "add"),
+      tooltip: state.labels.favorite,
+      flags,
+      click: () => win.webContents.send("musike:media-action", "favorite"),
+    },
+    {
+      icon: icon("previous"),
+      tooltip: state.labels.previous,
+      flags,
+      click: () => win.webContents.send("musike:media-action", "previous"),
+    },
+    {
+      icon: icon(state.playing ? "pause" : "play"),
+      tooltip: state.labels.play,
+      flags,
+      click: () => win.webContents.send("musike:media-action", "toggle"),
+    },
+    {
+      icon: icon("next"),
+      tooltip: state.labels.next,
+      flags,
+      click: () => win.webContents.send("musike:media-action", "next"),
+    },
+  ];
+  win.setThumbarButtons(buttons);
+}
+
 function createSplash(): BrowserWindow {
   const splash = new BrowserWindow({
     width: 420,
@@ -135,6 +178,7 @@ function createMainWindow(url: string): BrowserWindow {
   win.once("ready-to-show", () => {
     if (state.maximized) win.maximize();
     win.show();
+    if (process.platform === "win32" && currentMedia) setThumbarButtons(win, currentMedia);
   });
   win.on("close", () => saveWindowState(win));
 
@@ -205,6 +249,16 @@ ipcMain.on("musike:retry", (event) => {
   // Open the new splash before closing the old one, or "window-all-closed" would quit the app.
   void launch();
   failed?.destroy();
+});
+
+// ── Windows taskbar thumbnail preview controls ──────────────────────────
+
+ipcMain.on("musike:media", (event, media: MediaState) => {
+  if (event.sender !== mainWindow?.webContents) return;
+  currentMedia = media;
+  if (mainWindow && process.platform === "win32") {
+    setThumbarButtons(mainWindow, media);
+  }
 });
 
 app.on("second-instance", () => {
