@@ -80,3 +80,31 @@ export interface AlbumPage {
   art: string;
   tracks: Track[];
 }
+
+/** A curated playlist as a cover in a shelf (home feed, charts) — not one of the person's own library playlists. */
+export interface PlaylistCard {
+  id: string;
+  title: string;
+  subtitle: string;
+  thumb: string;
+  art: string;
+}
+
+export interface PlaylistPreview {
+  id: string;
+  title: string;
+  subtitle: string;
+  thumb: string;
+  art: string;
+  tracks: Track[];
+}
+
+export type HomeSection =
+  | { title: string; kind: "tracks"; items: Track[] }
+  | { title: string; kind: "albums"; items: AlbumCard[] }
+  | { title: string; kind: "playlists"; items: PlaylistCard[] }
+  | { title: string; kind: "artists"; items: GenreArtist[] };
+
+export interface HomeFeed {
+  sections: HomeSection[];
+}

@@ -28,7 +28,9 @@ import Collection from "./views/Collection";
 import Genre from "./views/Genre";
 import Home from "./views/Home";
 import Library from "./views/Library";
+import PlaylistPreview from "./views/PlaylistPreview";
 import Search from "./views/Search";
+import SectionDetail from "./views/SectionDetail";
 
 const SHEET_HASH = `#${NOW_PLAYING_HASH}`;
 
@@ -132,6 +134,8 @@ export default function App() {
               <Route path={paths.favorites} element={<Collection kind="favorites" />} />
               <Route path={paths.history} element={<Collection kind="history" />} />
               <Route path="/playlist/:id" element={<Collection kind="playlist" />} />
+              <Route path="/discover/playlist/:id" element={<PlaylistPreview />} />
+              <Route path={paths.section} element={<SectionDetail />} />
               <Route path="*" element={<Home />} />
             </Routes>
           )}

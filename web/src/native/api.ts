@@ -9,6 +9,10 @@ import {
   genre as genrePage,
   genreArtists,
   genres,
+  home as homeFeed,
+  moods,
+  PLAYLIST_ID,
+  playlistPreview,
   searchAlbums,
 } from "../../../server/src/browse";
 import { msg, tr, type MsgKey } from "../../../server/src/i18n";
@@ -63,7 +67,14 @@ export const api: MusikeApi = {
     }, signal),
   suggest: (q, signal) => call(() => suggestions(q.trim().slice(0, 100), getLang()).catch(() => []), signal),
   radio: (id) => call(() => radio(id)),
+  home: (signal) => call(() => homeFeed(getLang()), signal),
+  browsePlaylist: (id, signal) =>
+    call(async () => {
+      if (!PLAYLIST_ID.test(id)) throw fail(400, "invalidPlaylist");
+      return playlistPreview(id, getLang());
+    }, signal),
   genres: () => call(() => genres(getLang())),
+  moods: () => call(() => moods(getLang())),
   genre: (id, signal) =>
     call(async () => {
       if (!GENRE_ID.test(id)) throw fail(400, "invalidGenre");

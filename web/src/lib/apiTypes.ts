@@ -1,4 +1,4 @@
-import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, Library, Playlist, Track } from "./types";
+import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, HomeFeed, Library, Playlist, PlaylistPreview, Track } from "./types";
 
 /**
  * What the app needs from a backend. The web app and the desktop app talk to the Musike server over HTTP
@@ -69,7 +69,12 @@ export interface MusikeApi {
   search(q: string, type: "song" | "video", signal?: AbortSignal): Promise<Track[]>;
   suggest(q: string, signal?: AbortSignal): Promise<string[]>;
   radio(id: string): Promise<Track[]>;
+  /** The catalog's own picks for the home screen (quick picks, curated playlists, new releases, top-artists chart). */
+  home(signal?: AbortSignal): Promise<HomeFeed>;
+  /** A curated playlist from a home-feed/charts shelf, read-only. */
+  browsePlaylist(id: string, signal?: AbortSignal): Promise<PlaylistPreview>;
   genres(): Promise<Genre[]>;
+  moods(): Promise<Genre[]>;
   genre(id: string, signal?: AbortSignal): Promise<GenrePage>;
   genreArtists(id: string, offset: number): Promise<{ artists: GenreArtist[]; hasMore: boolean }>;
   artist(id: string, signal?: AbortSignal): Promise<ArtistPage>;

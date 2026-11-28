@@ -28,6 +28,7 @@ export const pt: Messages = {
     tracks: (n) => count(n, "faixa", "faixas"),
     songs: (n) => count(n, "música", "músicas"),
     artists: (n) => count(n, "artista", "artistas"),
+    albums: (n) => count(n, "álbum", "álbuns"),
   },
 
   time: {
@@ -60,6 +61,7 @@ export const pt: Messages = {
     startBody: "Procure qualquer música ou clipe do YouTube. Toca como áudio ou vídeo, sem anúncios.",
     seeAll: "Ver tudo",
     yourFavorites: "Suas favoritas",
+    discover: "Descobrir",
   },
 
   library: {
@@ -241,6 +243,7 @@ export const pt: Messages = {
     idleBody:
       "Busque por música, artista ou álbum. Para clipes e ao vivo, use a aba Vídeos. Também dá para colar um link do YouTube.",
     exploreGenres: "Explorar por gênero",
+    exploreMoods: "Explorar por clima",
     albums: "Álbuns",
   },
 
@@ -309,6 +312,13 @@ export const pt: Messages = {
     openPlaylist: "Abrir playlist",
     noTracks: "Nenhuma faixa para tocar",
     noTracksBody: "O YouTube Music não oferece as faixas deste álbum aqui.",
+  },
+
+  playlistPreview: {
+    fallbackName: "Playlist",
+    openFailed: "Não deu para abrir esta playlist",
+    noTracks: "Nenhuma faixa para tocar",
+    noTracksBody: "O YouTube Music não oferece as faixas desta playlist aqui.",
   },
 
   settings: {

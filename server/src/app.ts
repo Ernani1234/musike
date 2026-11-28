@@ -2,7 +2,21 @@ import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
-import { ALBUM_ID, album, ARTIST_ID, artist, GENRE_ID, genre, genreArtists, genres, searchAlbums } from "./browse.js";
+import {
+  ALBUM_ID,
+  album,
+  ARTIST_ID,
+  artist,
+  GENRE_ID,
+  genre,
+  genreArtists,
+  genres,
+  home,
+  moods,
+  PLAYLIST_ID,
+  playlistPreview,
+  searchAlbums,
+} from "./browse.js";
 import { config } from "./config.js";
 import * as library from "./library.js";
 import { fileStorage } from "./libraryFile.js";
@@ -67,6 +81,15 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
 
   // Discovery
 
+  /** The catalog's own picks for the home screen: quick picks, curated playlists, new releases, top-artists chart. */
+  app.get("/api/home", async (req) => home(langOf(req)));
+
+  app.get("/api/browse-playlist/:id", async (req) => {
+    const { id } = req.params as { id: string };
+    if (!PLAYLIST_ID.test(id)) throw new HttpError(400, msg("invalidPlaylist"));
+    return playlistPreview(id, langOf(req));
+  });
+
   app.get("/api/search", async (req) => {
     const { q, type } = req.query as { q?: string; type?: string };
     return { tracks: await search(query(q), type === "video" ? "video" : "song", langOf(req)) };
@@ -83,6 +106,9 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   // Browse by genre: genre → its artists or all its songs → an artist's top songs
 
   app.get("/api/genres", async (req) => ({ genres: await genres(langOf(req)) }));
+
+  /** YouTube Music's "Moods & moments" grid — opened exactly like a genre, same id shape, same page. */
+  app.get("/api/moods", async (req) => ({ moods: await moods(langOf(req)) }));
 
   app.get("/api/genres/:gid", async (req) => {
     const { gid } = req.params as { gid: string };

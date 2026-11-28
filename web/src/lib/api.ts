@@ -10,7 +10,7 @@ import {
   type SystemJob,
   type SystemMedia,
 } from "./apiTypes";
-import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, Library, Playlist, Track } from "./types";
+import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, HomeFeed, Library, Playlist, PlaylistPreview, Track } from "./types";
 
 // The HTTP backend: the Musike server (web app, desktop app). The Android build swaps this module for native/api.ts.
 export * from "./apiTypes";
@@ -41,7 +41,10 @@ export const api: MusikeApi = {
   suggest: (q: string, signal?: AbortSignal) =>
     request<{ suggestions: string[] }>(`/api/suggest?q=${encodeURIComponent(q)}`, { signal }).then((r) => r.suggestions),
   radio: (id: string) => request<{ tracks: Track[] }>(`/api/radio/${id}`).then((r) => r.tracks),
+  home: (signal?: AbortSignal) => request<HomeFeed>("/api/home", { signal }),
+  browsePlaylist: (id: string, signal?: AbortSignal) => request<PlaylistPreview>(`/api/browse-playlist/${encodeURIComponent(id)}`, { signal }),
   genres: () => request<{ genres: Genre[] }>("/api/genres").then((r) => r.genres),
+  moods: () => request<{ moods: Genre[] }>("/api/moods").then((r) => r.moods),
   genre: (id: string, signal?: AbortSignal) => request<GenrePage>(`/api/genres/${encodeURIComponent(id)}`, { signal }),
   genreArtists: (id: string, offset: number) =>
     request<{ artists: GenreArtist[]; hasMore: boolean }>(`/api/genres/${encodeURIComponent(id)}/artists?offset=${offset}`),

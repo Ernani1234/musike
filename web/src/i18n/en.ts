@@ -31,6 +31,7 @@ export const en = {
     tracks: (n: number) => count(n, "track", "tracks"),
     songs: (n: number) => count(n, "song", "songs"),
     artists: (n: number) => count(n, "artist", "artists"),
+    albums: (n: number) => count(n, "album", "albums"),
   },
 
   time: {
@@ -65,6 +66,7 @@ export const en = {
     startBody: "Find any song or music video on YouTube. It plays as audio or video, with no ads.",
     seeAll: "See all",
     yourFavorites: "Your favorites",
+    discover: "Discover",
   },
 
   library: {
@@ -247,6 +249,7 @@ export const en = {
     idleBody:
       "Search for a song, artist or album. For music videos and live performances, use the Videos tab. You can also paste a YouTube link.",
     exploreGenres: "Browse by genre",
+    exploreMoods: "Browse by mood",
     albums: "Albums",
   },
 
@@ -315,6 +318,13 @@ export const en = {
     openPlaylist: "Open playlist",
     noTracks: "No playable tracks",
     noTracksBody: "YouTube Music doesn't offer this album's tracks here.",
+  },
+
+  playlistPreview: {
+    fallbackName: "Playlist",
+    openFailed: "Couldn't open this playlist",
+    noTracks: "No playable tracks",
+    noTracksBody: "YouTube Music doesn't offer this playlist's tracks here.",
   },
 
   settings: {
