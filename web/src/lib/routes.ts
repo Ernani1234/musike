@@ -10,6 +10,10 @@ export const paths = {
   favorites: "/favorites",
   history: "/history",
   playlist: (id: string) => `/playlist/${id}`,
+  /** A curated playlist from the home feed/charts — read-only, not one of the person's own library playlists. */
+  browsePlaylist: (id: string) => `/discover/playlist/${encodeURIComponent(id)}`,
+  /** A Home discover section's full content (a chart, a mix, a shelf) — no id of its own, carried via route state. */
+  section: "/discover/section",
 };
 
 /** Hash that opens the full-screen Now Playing sheet on phones (so Back closes it). */

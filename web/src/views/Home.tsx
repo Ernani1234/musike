@@ -4,10 +4,13 @@ import { Link, useNavigate } from "react-router";
 import { Artwork } from "../components/Artwork";
 import { LogoMark } from "../components/Brand";
 import { PageHeader, Section } from "../components/Page";
+import { PlaylistRow } from "../components/PlaylistTiles";
 import { TrackList, TrackListSkeleton } from "../components/TrackList";
-import { useT } from "../i18n";
+import { useRemote } from "../hooks/useRemote";
+import { useI18n, useT } from "../i18n";
+import { api } from "../lib/api";
 import { paths } from "../lib/routes";
-import type { Track } from "../lib/types";
+import type { HomeFeed, HomeSection, Track } from "../lib/types";
 import { usePlayer } from "../player/player";
 import { useAppearance } from "../stores/appearance";
 import { useLibrary } from "../stores/library";
@@ -51,6 +54,91 @@ function RecentCard({ track, onPlay }: { track: Track; onPlay: () => void }) {
   );
 }
 
+/** A section whose full content (a chart, a mix, a shelf) is heavy enough to only mount on its own page. */
+type TileSection = HomeSection & { kind: "tracks" | "albums" | "artists" };
+
+/**
+ * One tile standing in for a whole section — tapping it opens `SectionDetail` with the full list, carried via
+ * route state (the data is already in memory, so nothing is refetched). Mounting one tile per section instead of
+ * every track/album/artist inline keeps Home light: a chart or mix alone can be 40+ items.
+ */
+function SectionTile({ section }: { section: TileSection }) {
+  const t = useT();
+  const first = section.items[0] as { art?: string; thumb?: string } | undefined;
+  const n = section.items.length;
+  const count = section.kind === "tracks" ? t.common.songs(n) : section.kind === "albums" ? t.common.albums(n) : t.common.artists(n);
+  return (
+    <Link to={paths.section} state={{ section }} className="group flex flex-col gap-2">
+      <span className="block overflow-hidden rounded-[14px]">
+        <Artwork
+          src={first?.art}
+          fallback={first?.thumb}
+          className="aspect-square w-full transition-transform duration-300 ease-out-expo group-hover:scale-[1.04]"
+        />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold">{section.title}</span>
+        <span className="block truncate text-xs text-fg-2">{count}</span>
+      </span>
+    </Link>
+  );
+}
+
+function DiscoverSections() {
+  const lang = useI18n((s) => s.lang);
+  const t = useT();
+  const feed = useRemote<HomeFeed>(`home:${lang}`, (signal) => api.home(signal));
+
+  if (feed.status === "loading") {
+    return (
+      <div className="flex flex-col gap-3 pt-6">
+        <h2 className="px-4 text-xl font-semibold tracking-tight md:px-6">{t.home.discover}</h2>
+        <div className="no-scrollbar flex gap-4 overflow-x-auto px-4 md:px-6">
+          {Array.from({ length: 6 }, (_, i) => (
+            <span key={i} className="skeleton aspect-square w-36 shrink-0 rounded-[14px] md:w-44" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (feed.status === "error") {
+    return (
+      <div className="flex items-center gap-3 px-4 pt-6 text-sm text-fg-2 md:px-6">
+        <span>{feed.message}</span>
+        <button type="button" onClick={feed.retry} className="font-medium text-fg underline-offset-2 hover:underline">
+          {t.common.retry}
+        </button>
+      </div>
+    );
+  }
+
+  // "playlists" shelves (curated playlists, video charts) are already light rows of covers, so they stay inline.
+  // Everything else (a chart's artists, a mix's tracks, an album shelf) becomes one tile in a single "Discover" row.
+  const tileSections = feed.data.sections.filter((s): s is TileSection => s.kind !== "playlists");
+  const rowSections = feed.data.sections.filter((s): s is HomeSection & { kind: "playlists" } => s.kind === "playlists");
+
+  return (
+    <>
+      {tileSections.length > 0 && (
+        <section className="flex flex-col gap-3 pt-6">
+          <h2 className="px-4 text-xl font-semibold tracking-tight md:px-6">{t.home.discover}</h2>
+          <ul className="no-scrollbar flex snap-x snap-mandatory scroll-px-4 gap-4 overflow-x-auto px-4 md:scroll-px-6 md:px-6">
+            {tileSections.map((section, i) => (
+              <li key={`${section.kind}:${i}`} className="w-36 shrink-0 snap-start md:w-44">
+                <SectionTile section={section} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {rowSections.map((section, i) => (
+        <PlaylistRow key={`${section.title}:${i}`} title={section.title} playlists={section.items} />
+      ))}
+    </>
+  );
+}
+
 export default function Home() {
   const { favorites, playlists, history, status } = useLibrary();
   const playList = usePlayer((s) => s.playList);
@@ -87,6 +175,9 @@ export default function Home() {
           </button>
         </div>
       )}
+
+      {/* The catalog's own picks, always shown: new/empty libraries need this most, to have something to explore. */}
+      <DiscoverSections />
 
       {!empty && status === "ready" && (
         <div className="flex flex-col gap-10">
